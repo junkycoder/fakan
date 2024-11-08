@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <title>Cut it short!</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --background-color: #000;
+      --primary-color: #fb00f1;
+      --active-color: #fff;
+    }
+    
+    html {
+      font-size: 18px;
+    }
+    
+    body {
+      margin: 0;
+      font-family: "Courier New Regular", monospace;
+      background-color: var(--background-color);
+      color: var(--primary-color);
+    }
+    
+    a, a:visited {
+      color: var(--primary-color);
+    }
+    a:hover, a:active {
+      color: var(--active-color);
+    }
+    
+    .distinctive {
+      background-color: var(--primary-color);
+      color: var(--active-color);
+    }
+    
+    main {
+      scroll-behavior: smooth;
+      overflow-y: scroll;
+      height: 100vh;
+      scroll-snap-type: y mandatory;
+    }
+
+    header,
+    section {
+      height: 100vh;
+      overflow: hidden;
+      box-sizing: border-box;
+      padding: 1rem;
+      scroll-snap-align: end;
+    }
+    
+    h1 {
+      font-size: 2.2rem;
+      font-weight: normal;
+      text-align: center;
+    }
+    
+    p {
+      font-size: 1.2rem;
+    }
+
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Cut it short!</h1>
+      <nav>
+        <menu>
+          <li><a href="#shortcuts">shortcuts</a></li>
+          <li><a href="#gameplay">game</a></li>
+          <li><a href="#scoreboard">score board</a></li>
+        </menu>
+      </nav>
+    </header>
+    <section id="gameplay">
+      <h1>game</h1>
+      <dialog>
+        <form>
+          <label for="username">You have finished the game! If you want to save your score, write your name.</label>
+          <input type="text" id="username" required>
+        </form>
+      </dialog>
+    </section>
+    <section id="shortcuts">
+      <h1>shortcuts</h1>
+    </section>
+    <section id="scoreboard" class="distinctive">
+      <h1>score board</h1>
+    </section>
+  </main>
+</body>
+</html>
