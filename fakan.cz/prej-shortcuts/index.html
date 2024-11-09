@@ -9,6 +9,7 @@
       --background-color: #000;
       --primary-color: #fb00f1;
       --active-color: #fff;
+      --border-radius: .5rem;
     }
     
     html {
@@ -47,7 +48,7 @@
       height: 100vh;
       overflow: hidden;
       box-sizing: border-box;
-      padding: 1rem;
+      padding: 0 1rem;
       scroll-snap-align: end;
     }
     
@@ -60,7 +61,52 @@
     p {
       font-size: 1.2rem;
     }
-
+    
+    header {
+      display: grid;
+      gap: 1rem;
+      grid-template-rows: auto auto;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    header nav {
+      align-self: start;
+    }
+    
+    header h1 {
+      align-self: end;
+    }
+    
+    menu {
+      display: flex;
+      gap: 2rem;
+      
+      /* remove default list styles */
+      list-style-type: none;
+      padding: 0;
+      margin: 0;
+    }
+    menu li {
+      display: contents;
+    }
+    menu a {
+      display: flex;
+      min-width: 8rem;
+      justify-content: center;
+      align-items: center;
+      text-decoration: none;
+      box-sizing: border-box;
+      border: 1px solid var(--primary-color);
+      padding: .5rem 1rem;
+      border-radius: var(--border-radius);
+      text-align: center;
+      font-size: 1.2rem;
+    }
+    menu a:hover {
+      color: var(--active-color);
+      border-color: var(--active-color);
+    }
   </style>
 </head>
 <body>
@@ -71,7 +117,7 @@
         <menu>
           <li><a href="#shortcuts">shortcuts</a></li>
           <li><a href="#gameplay">game</a></li>
-          <li><a href="#scoreboard">score board</a></li>
+          <li><a href="#scoreboard">score<br>board</a></li>
         </menu>
       </nav>
     </header>
