@@ -45,10 +45,9 @@
 
     header,
     section {
+      display: grid; /* zajímavý, vrátí spacing h1kám */
       height: 100vh;
-      overflow: hidden;
       box-sizing: border-box;
-      padding: 0 1rem;
       scroll-snap-align: end;
     }
     
@@ -107,6 +106,23 @@
       color: var(--active-color);
       border-color: var(--active-color);
     }
+    
+    .row {
+      display: grid;
+      grid-template-columns: 100vw 100vw 100vw 100vw;
+      gap: 1rem;
+      scroll-behavior: smooth;
+      overflow-x: scroll;
+      scroll-snap-type: x mandatory;
+    }
+    
+    .row > div {
+      float: left;
+      height: 100vh;
+      width: 100vw;
+      scroll-snap-type: x mandatory;
+      scroll-snap-align: center;
+    }
   </style>
 </head>
 <body>
@@ -121,20 +137,53 @@
         </menu>
       </nav>
     </header>
-    <section id="gameplay">
-      <h1>game</h1>
-      <dialog>
-        <form>
-          <label for="username">You have finished the game! If you want to save your score, write your name.</label>
-          <input type="text" id="username" required>
-        </form>
-      </dialog>
+    <section id="gameplay" class="row">
+      <div>
+        <h1>game</h1>
+        <dialog>
+          <form>
+            <label for="username">You have finished the game! If you want to save your score, write your name.</label>
+            <input type="text" id="username" required>
+          </form>
+        </dialog>
+      </div>
+      <div>
+        <h1>...</h1>
+      </div>
+      <div>
+        <h1>..?</h1>
+      </div>
+      <div>
+        <h1>!</h1>
+      </div>
     </section>
-    <section id="shortcuts">
-      <h1>shortcuts</h1>
+    <section id="shortcuts" class="row">
+      <div>
+        <h1>shortcuts</h1>
+      </div>
+      <div>
+        <h1>něco jinýho</h1>
+      </div>
+      <div>
+        <h1>a zase něco</h1>
+      </div>
+      <div>
+        <h1>tak jak?</h1>
+      </div>
     </section>
-    <section id="scoreboard" class="distinctive">
-      <h1>score board</h1>
+    <section id="scoreboard" class="row distinctive">
+      <div>
+        <h1>score board</h1>
+      </div>
+      <div>
+        <h1>this is the end</h1>
+      </div>
+      <div>
+        <h1>my only friend</h1>
+      </div>
+      <div>
+        <h1>the end</h1>
+      </div>
     </section>
   </main>
 </body>
