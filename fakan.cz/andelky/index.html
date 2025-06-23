@@ -1,0 +1,78 @@
+<!--
+  Modern yet simple website that presents one kind of hand made product.
+  Visitors can see the product, read about it, and contact the owner.
+-->
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verunka vyrábí...</title>
+  <style>
+    :root {
+      --background-color: #f0f0f0;
+      --text-color: #000000;
+      --primary-color: #ff0000;
+      --secondary-color: #0000ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --background-color: #303030;
+        --text-color: #ffffff;
+        --primary-color: #00ff00;
+        --secondary-color: #ffff00;
+      }
+    }
+    
+    /* https://css-tricks.com/snippets/css/system-font-stack/#aa-method-2-system-font-stacks */
+    @font-face {
+      font-family: system-ui;
+      font-style: normal;
+      font-weight: 300;
+      src: local(".SFNSText-Light"), local(".HelveticaNeueDeskInterface-Light"), local(".LucidaGrandeUI"), local("Ubuntu Light"), local("Segoe UI Light"), local("Roboto-Light"), local("DroidSans"), local("Tahoma");
+    }
+    html {
+      font-size: 18px;
+    }
+    body {
+      font-family: "system-ui";
+      background-color: var(--background-color);
+      margin: 0;
+      color: var(--text-color);
+    }
+    header {
+      background-color: var(--primary-color);
+      box-sizing: border-box;
+      padding: 1rem;
+      text-align: center;
+    }
+    main {
+      box-sizing: border-box;
+      padding: 1rem;
+    }
+    footer {
+      background-color: var(--secondary-color);
+      box-sizing: border-box;
+      padding: 1rem;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Verunka vyrábí</h1>
+    <p></p>
+  </header>
+  <main>
+    <h1>Andělky</h1>
+    <p>
+      Andělky jsou ručně vyrobené z papíru a laku. Jsou to krásné dekorace,
+      které můžete pověsit na stromeček nebo na zeď.
+    </p>
+  </main>
+  <footer>
+    <p>
+      meh.
+    </p>
+  </footer>
+</body>
