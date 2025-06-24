@@ -5,7 +5,7 @@ I am just software you can use to edit and distribute your text content.
 
 ## How to start
 Right now you passed every test and you can start editing.
-* You can read therforce you can write.
+* You can read therefore you can write.
 * You are online so you can distribute.
 
 ## PoC
