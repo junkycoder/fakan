@@ -11,19 +11,39 @@ const KEYWORDS = {
   py: 'False None True and as assert async await break class continue def del elif else except finally for from global if import in is lambda nonlocal not or pass raise return try while with yield self'.split(' '),
   sh: 'if then else elif fi case esac for while do done function return in select until time'.split(' '),
   css: '!important inherit initial unset auto none'.split(' '),
+  ruby: 'BEGIN END alias and begin break case class def defined do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield require require_relative attr_accessor attr_reader attr_writer'.split(' '),
+  go: 'break case chan const continue default defer else fallthrough for func go goto if import interface map package range return select struct switch type var nil true false iota'.split(' '),
+  rust: 'as async await break const continue crate dyn else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while'.split(' '),
+  java: 'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record'.split(' '),
+  c: 'auto break case char const continue default do double else enum extern float for goto if inline int long register restrict return short signed sizeof static struct switch typedef union unsigned void volatile while bool true false NULL nullptr class delete new this template typename namespace using public private protected virtual override final friend operator constexpr explicit mutable noexcept static_cast dynamic_cast reinterpret_cast const_cast'.split(' '),
+  php: 'abstract and array as break callable case catch class clone const continue declare default die do echo else elseif empty enddeclare endfor endforeach endif endswitch endwhile enum eval exit extends final finally fn for foreach function global goto if implements include include_once instanceof insteadof interface isset list match namespace new null or print private protected public readonly require require_once return self static switch throw trait true false try unset use var while xor yield'.split(' '),
+  lua: 'and break do else elseif end false for function goto if in local nil not or repeat return then true until while self'.split(' '),
+  sql: 'select from where insert into update delete create drop alter table index view as on join inner outer left right full cross union all distinct group by having order limit offset values set null not and or in is like between exists case when then else end primary key foreign references default unique check constraint with returning'.split(' '),
 };
 
 function detectLang(filename) {
   const fn = (filename || '').toLowerCase();
   if (fn.endsWith('.md') || fn.endsWith('.markdown')) return 'md';
   if (fn.endsWith('.js') || fn.endsWith('.mjs') || fn.endsWith('.cjs') || fn.endsWith('.ts') || fn.endsWith('.tsx') || fn.endsWith('.jsx')) return 'js';
-  if (fn.endsWith('.css')) return 'css';
+  if (fn.endsWith('.css') || fn.endsWith('.scss') || fn.endsWith('.sass') || fn.endsWith('.less')) return 'css';
   if (fn.endsWith('.html') || fn.endsWith('.htm') || fn.endsWith('.svg') || fn.endsWith('.xml')) return 'html';
-  if (fn.endsWith('.json')) return 'json';
-  if (fn.endsWith('.sh') || fn.endsWith('.bash') || fn.endsWith('.zsh')) return 'sh';
-  if (fn.endsWith('.py')) return 'py';
+  if (fn.endsWith('.json') || fn.endsWith('.jsonc')) return 'json';
+  if (fn.endsWith('.sh') || fn.endsWith('.bash') || fn.endsWith('.zsh') || fn.endsWith('.fish')) return 'sh';
+  if (fn.endsWith('.py') || fn.endsWith('.pyw')) return 'py';
   if (fn.endsWith('.yml') || fn.endsWith('.yaml')) return 'yaml';
   if (fn.endsWith('.toml')) return 'toml';
+  if (fn.endsWith('.rb') || fn.endsWith('.rake') || fn === 'gemfile' || fn === 'rakefile' || fn.endsWith('.gemspec')) return 'ruby';
+  if (fn.endsWith('.go')) return 'go';
+  if (fn.endsWith('.rs')) return 'rust';
+  if (fn.endsWith('.java') || fn.endsWith('.kt') || fn.endsWith('.kts')) return 'java';
+  if (fn.endsWith('.c') || fn.endsWith('.h') || fn.endsWith('.cpp') || fn.endsWith('.hpp') || fn.endsWith('.cc') || fn.endsWith('.cxx') || fn.endsWith('.m') || fn.endsWith('.mm')) return 'c';
+  if (fn.endsWith('.php') || fn.endsWith('.phtml')) return 'php';
+  if (fn.endsWith('.lua')) return 'lua';
+  if (fn.endsWith('.sql')) return 'sql';
+  if (fn.endsWith('.swift')) return 'c'; // approximace — keywords se liší, ale operátorová struktura sedí
+  if (fn.endsWith('.dart')) return 'c';
+  if (fn === 'dockerfile' || fn.endsWith('.dockerfile')) return 'sh';
+  if (fn === 'makefile' || fn.endsWith('.mk')) return 'sh';
   return 'plain';
 }
 
@@ -36,65 +56,160 @@ const escapeHtml = (s) => s
 // Každý vrací pole řádků; každý řádek je pole tokenů { t, cls }.
 // "Multi-line state" (např. v block-comment nebo block-string) drží reduce přes řádky.
 
-function tokenizeJs(lines) {
-  const kws = new Set(KEYWORDS.js);
-  let inBlock = false;
-  return lines.map((line) => {
-    const tokens = [];
-    let i = 0;
-    if (inBlock) {
-      const end = line.indexOf('*/');
-      if (end === -1) { tokens.push({ t: line, cls: 'tok-cmt' }); return tokens; }
-      tokens.push({ t: line.slice(0, end + 2), cls: 'tok-cmt' });
-      i = end + 2;
-      inBlock = false;
-    }
-    while (i < line.length) {
-      const c = line[i];
-      if (c === '/' && line[i + 1] === '/') { tokens.push({ t: line.slice(i), cls: 'tok-cmt' }); break; }
-      if (c === '/' && line[i + 1] === '*') {
-        const end = line.indexOf('*/', i + 2);
-        if (end === -1) { tokens.push({ t: line.slice(i), cls: 'tok-cmt' }); inBlock = true; break; }
-        tokens.push({ t: line.slice(i, end + 2), cls: 'tok-cmt' });
-        i = end + 2;
-        continue;
+// Generický tokenizer pro C-like jazyky: js, c, java, go, rust, php, ruby, lua, sql.
+// opts:
+//   kws: Set<string> — keywords
+//   line: array of line-comment prefixes (např. ['//', '#'])
+//   block: [open, close] nebo null (např. ['/*', '*/'])
+//   quotes: array of string quote chars (default ['"', "'", '`'])
+//   wordRe: regex pro identifier (default /[a-zA-Z_$]/)
+//   wordContRe: regex pro identifier (default /[a-zA-Z0-9_$]/)
+//   caseInsensitiveKws: bool — kws matchování ignoruje case (SQL)
+//   sigilVarRe: regex pro sigil proměnné (např. /\$[a-zA-Z_][\w]*/ pro PHP, /@@?[a-zA-Z_][\w]*/ pro Ruby)
+function makeCLikeTokenizer(opts) {
+  const kws = opts.caseInsensitiveKws
+    ? new Set([...opts.kws].map((k) => k.toLowerCase()))
+    : opts.kws;
+  const blockOpen = opts.block ? opts.block[0] : null;
+  const blockClose = opts.block ? opts.block[1] : null;
+  const lineComments = opts.line || [];
+  const quotes = opts.quotes || ['"', "'", '`'];
+  const wordRe = opts.wordRe || /[a-zA-Z_$]/;
+  const wordContRe = opts.wordContRe || /[a-zA-Z0-9_$]/;
+  const sigilVarRe = opts.sigilVarRe;
+
+  return (lines) => {
+    let inBlock = false;
+    return lines.map((line) => {
+      const tokens = [];
+      let i = 0;
+      if (inBlock && blockClose) {
+        const end = line.indexOf(blockClose);
+        if (end === -1) { tokens.push({ t: line, cls: 'tok-cmt' }); return tokens; }
+        tokens.push({ t: line.slice(0, end + blockClose.length), cls: 'tok-cmt' });
+        i = end + blockClose.length;
+        inBlock = false;
       }
-      if (c === '"' || c === "'" || c === '`') {
-        const quote = c;
-        let j = i + 1;
-        while (j < line.length && line[j] !== quote) {
-          if (line[j] === '\\') j++;
-          j++;
+      while (i < line.length) {
+        // line comment
+        let matched = false;
+        for (const lc of lineComments) {
+          if (line.startsWith(lc, i)) {
+            tokens.push({ t: line.slice(i), cls: 'tok-cmt' });
+            i = line.length;
+            matched = true; break;
+          }
         }
-        tokens.push({ t: line.slice(i, Math.min(j + 1, line.length)), cls: 'tok-str' });
-        i = j + 1;
-        continue;
+        if (matched) break;
+        // block comment
+        if (blockOpen && line.startsWith(blockOpen, i)) {
+          const end = line.indexOf(blockClose, i + blockOpen.length);
+          if (end === -1) { tokens.push({ t: line.slice(i), cls: 'tok-cmt' }); inBlock = true; break; }
+          tokens.push({ t: line.slice(i, end + blockClose.length), cls: 'tok-cmt' });
+          i = end + blockClose.length;
+          continue;
+        }
+        const c = line[i];
+        // string
+        if (quotes.includes(c)) {
+          const q = c;
+          let j = i + 1;
+          while (j < line.length && line[j] !== q) { if (line[j] === '\\') j++; j++; }
+          tokens.push({ t: line.slice(i, Math.min(j + 1, line.length)), cls: 'tok-str' });
+          i = j + 1;
+          continue;
+        }
+        // sigil var (php $var, ruby @var/@@var)
+        if (sigilVarRe) {
+          sigilVarRe.lastIndex = i;
+          const m = sigilVarRe.exec(line.slice(i));
+          if (m && m.index === 0) {
+            tokens.push({ t: m[0], cls: 'tok-var' });
+            i += m[0].length;
+            continue;
+          }
+        }
+        // number
+        if (/[0-9]/.test(c) && (i === 0 || !wordContRe.test(line[i - 1]))) {
+          let j = i;
+          while (j < line.length && /[0-9.xXa-fA-F_]/.test(line[j])) j++;
+          tokens.push({ t: line.slice(i, j), cls: 'tok-num' });
+          i = j;
+          continue;
+        }
+        // identifier / keyword
+        if (wordRe.test(c)) {
+          let j = i;
+          while (j < line.length && wordContRe.test(line[j])) j++;
+          const word = line.slice(i, j);
+          const matchKey = opts.caseInsensitiveKws ? word.toLowerCase() : word;
+          if (kws.has(matchKey)) tokens.push({ t: word, cls: 'tok-kw' });
+          else if (line[j] === '(') tokens.push({ t: word, cls: 'tok-fn' });
+          else tokens.push({ t: word });
+          i = j;
+          continue;
+        }
+        if (/[{}()\[\];,.]/.test(c)) { tokens.push({ t: c, cls: 'tok-pun' }); i++; continue; }
+        if (/[+\-*/%=<>!&|^~?:]/.test(c)) { tokens.push({ t: c, cls: 'tok-op' }); i++; continue; }
+        tokens.push({ t: c });
+        i++;
       }
-      if (/[0-9]/.test(c) && (i === 0 || !/[a-zA-Z_$]/.test(line[i - 1]))) {
-        let j = i;
-        while (j < line.length && /[0-9.xXa-fA-F_]/.test(line[j])) j++;
-        tokens.push({ t: line.slice(i, j), cls: 'tok-num' });
-        i = j;
-        continue;
-      }
-      if (/[a-zA-Z_$]/.test(c)) {
-        let j = i;
-        while (j < line.length && /[a-zA-Z0-9_$]/.test(line[j])) j++;
-        const word = line.slice(i, j);
-        if (kws.has(word)) tokens.push({ t: word, cls: 'tok-kw' });
-        else if (line[j] === '(') tokens.push({ t: word, cls: 'tok-fn' });
-        else tokens.push({ t: word });
-        i = j;
-        continue;
-      }
-      if (/[{}()\[\];,.]/.test(c)) { tokens.push({ t: c, cls: 'tok-pun' }); i++; continue; }
-      if (/[+\-*/%=<>!&|^~?:]/.test(c)) { tokens.push({ t: c, cls: 'tok-op' }); i++; continue; }
-      tokens.push({ t: c });
-      i++;
-    }
-    return tokens;
-  });
+      return tokens;
+    });
+  };
 }
+
+const tokenizeJs = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.js),
+  line: ['//'], block: ['/*', '*/'],
+});
+const tokenizeGo = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.go),
+  line: ['//'], block: ['/*', '*/'],
+  quotes: ['"', '`'],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+});
+const tokenizeRust = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.rust),
+  line: ['//'], block: ['/*', '*/'],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+});
+const tokenizeJava = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.java),
+  line: ['//'], block: ['/*', '*/'],
+  wordRe: /[a-zA-Z_$]/, wordContRe: /[a-zA-Z0-9_$]/,
+});
+const tokenizeC = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.c),
+  line: ['//'], block: ['/*', '*/'],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+});
+const tokenizePhp = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.php),
+  line: ['//', '#'], block: ['/*', '*/'],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+  sigilVarRe: /^\$[a-zA-Z_][\w]*/,
+});
+const tokenizeRuby = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.ruby),
+  line: ['#'], block: ['=begin', '=end'],
+  quotes: ['"', "'", '`'],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_?!]/,
+  sigilVarRe: /^@@?[a-zA-Z_][\w]*|^\$[a-zA-Z_][\w]*/,
+});
+const tokenizeLua = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.lua),
+  line: ['--'], block: ['--[[', ']]'],
+  quotes: ['"', "'"],
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+});
+const tokenizeSql = makeCLikeTokenizer({
+  kws: new Set(KEYWORDS.sql),
+  line: ['--'], block: ['/*', '*/'],
+  quotes: ['"', "'"],
+  caseInsensitiveKws: true,
+  wordRe: /[a-zA-Z_]/, wordContRe: /[a-zA-Z0-9_]/,
+});
 
 function tokenizePy(lines) {
   const kws = new Set(KEYWORDS.py);
@@ -409,6 +524,14 @@ const TOKENIZERS = {
   yaml: tokenizeYaml,
   toml: tokenizeYaml,
   md: tokenizeMd,
+  ruby: tokenizeRuby,
+  go: tokenizeGo,
+  rust: tokenizeRust,
+  java: tokenizeJava,
+  c: tokenizeC,
+  php: tokenizePhp,
+  lua: tokenizeLua,
+  sql: tokenizeSql,
   plain: (lines) => lines.map((l) => [{ t: l }]),
 };
 
@@ -501,7 +624,6 @@ export function mountEditor(host, opts = {}) {
     const cs = getComputedStyle(view);
     padX = parseFloat(cs.paddingLeft) || 0;
     padY = parseFloat(cs.paddingTop) || 0;
-    window.__vimDbg = { padX, padY, charW, lineH, padRaw: cs.paddingLeft };
   };
 
   // --- render ---------------------------------------------------------------
