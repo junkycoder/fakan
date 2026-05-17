@@ -148,38 +148,122 @@ button {
   outline-offset: 2px;
 }
 
-/* --- záložky (původní HUD pill) ------------------------------------------ */
+/* --- spodní navigace ----------------------------------------------------- */
 
-.tabs {
+.nav {
   position: fixed;
   bottom: calc(12px + var(--safe-b));
   left: 50%;
   transform: translateX(-50%);
   z-index: 5;
   display: flex;
-  gap: 14px;
   align-items: center;
+  gap: 4px;
   background: color-mix(in oklab, var(--bg) 80%, transparent);
   backdrop-filter: blur(8px);
-  padding: 6px 14px;
+  padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
-  white-space: nowrap;
   max-width: calc(100vw - 32px);
-  overflow-x: auto;
 }
-.tab {
+
+.nav__sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 2px 4px;
+}
+
+.nav__home { position: relative; outline: none; }
+.nav__home-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.nav__home:hover .nav__home-btn,
+.nav__home:focus-within .nav__home-btn { color: var(--c-yellow); }
+
+.nav__dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px;
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+}
+.nav__home:hover .nav__dropdown,
+.nav__home:focus-within .nav__dropdown { display: flex; }
+
+.nav__section {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--muted);
   text-decoration: none;
-  cursor: pointer;
-  padding: 2px 0;
+  padding: 4px 8px;
   border-radius: 4px;
   white-space: nowrap;
+  cursor: pointer;
 }
-.tab:hover { color: var(--fg); }
-.tab--active { color: var(--c-yellow); }
+.nav__section:hover {
+  color: var(--fg);
+  background: color-mix(in oklab, var(--c-yellow) 25%, transparent);
+}
+
+.nav__tabs {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  overflow-x: auto;
+  max-width: 65vw;
+  scrollbar-width: thin;
+}
+.nav__tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 4px 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.nav__tab--main {
+  color: var(--fg);
+  border-color: var(--line);
+}
+.nav__tab.is-active {
+  color: var(--c-yellow);
+  border-color: var(--c-yellow);
+}
+.nav__tab:hover {
+  color: var(--fg);
+  background: color-mix(in oklab, var(--c-yellow) 20%, transparent);
+}
+.nav__tab-close {
+  color: var(--muted);
+  font-size: 14px;
+  padding: 0 4px;
+  line-height: 1;
+}
+.nav__tab-close:hover { color: var(--c-red); }
+.nav__empty {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 8px;
+  opacity: 0.7;
+}
 
 /* --- okna s obsahem ------------------------------------------------------ */
 
@@ -200,27 +284,35 @@ button {
   flex-direction: column;
   overflow: hidden;
   pointer-events: auto;
-  width: 360px;
-  height: 280px;
   min-width: 240px;
   min-height: 140px;
   max-width: calc(100vw - 32px);
   max-height: calc(100dvh - 32px - var(--safe-t) - var(--safe-b));
   resize: both;
 }
+.panel--main { width: 480px; height: 380px; }
+.panel--preview { width: 300px; height: 220px; }
+.panel--max { resize: none; }
+
+.panel.is-active { border-color: var(--c-yellow); }
+.panel.is-active .panel__head {
+  border-bottom-color: var(--c-yellow);
+  color: var(--c-yellow);
+}
+.panel.is-active .panel__path { color: var(--c-yellow); }
 
 .panel__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 6px;
+  padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   cursor: grab;
   user-select: none;
-  background: color-mix(in oklab, var(--bg) 100%, transparent);
+  background: var(--bg);
 }
 .panel__head.is-dragging { cursor: grabbing; }
+
 .panel__path {
   font-family: var(--mono);
   font-size: 13px;
@@ -230,14 +322,60 @@ button {
   white-space: nowrap;
   flex: 1;
 }
-.panel__close {
-  color: var(--muted);
-  font-size: 18px;
-  line-height: 1;
-  padding: 2px 6px;
+
+.panel__actions {
+  display: flex;
+  gap: 2px;
+  align-items: center;
   flex-shrink: 0;
 }
-.panel__close:hover { color: var(--fg); }
+.panel__btn {
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 3px 7px;
+  border-radius: 4px;
+}
+.panel__btn:hover { color: var(--fg); background: color-mix(in oklab, var(--fg) 8%, transparent); }
+.panel__btn--play.is-active { color: var(--c-green); }
+.panel__btn--close:hover { color: var(--c-red); }
+
+/* zobrazení zdroje */
+.src {
+  margin: 0;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: transparent;
+  white-space: pre;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+.src code {
+  font-family: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+.panel__note {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.panel__note.empty { font-style: italic; }
+
+.iframe-preview {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+  display: block;
+}
 
 .panel__body {
   padding: 12px;

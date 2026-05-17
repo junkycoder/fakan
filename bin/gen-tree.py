@@ -40,33 +40,41 @@ def parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     return fm, body.lstrip("\n")
 
 
+TEXT_EXTENSIONS = {
+    ".md", ".html", ".css", ".js", ".json", ".txt", ".sh", ".py",
+    ".ts", ".tsx", ".yaml", ".yml", ".toml",
+}
+
+
 def make_file_node(entry: Path) -> dict:
     name = entry.name
-    if name.lower().endswith(".md"):
+    ext = entry.suffix.lower()
+    is_md = ext == ".md"
+    is_text = ext in TEXT_EXTENSIONS or name.startswith(".")
+
+    node = {
+        "name": name,
+        "type": "file",
+        "kind": "md" if is_md else ("text" if is_text else "other"),
+        "filename": name,
+    }
+
+    if is_text:
         try:
             text = entry.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             text = ""
-        fm, body = parse_frontmatter(text)
-        title = fm.get("title")
-        slug = fm.get("slug") or entry.stem
-        # bez frontmatteru zobraz celý filename (s .md), at je vidět, že je to surový soubor
-        display = title if title else name
-        return {
-            "name": display,
-            "type": "file",
-            "kind": "md",
-            "filename": name,
-            "slug": slug,
-            "title": title or "",
-            "content": body,
-        }
-    return {
-        "name": name,
-        "type": "file",
-        "kind": "other",
-        "filename": name,
-    }
+        if is_md:
+            fm, body = parse_frontmatter(text)
+            node["slug"] = fm.get("slug") or entry.stem
+            node["title"] = fm.get("title") or ""
+            node["content"] = body  # markdown body (po frontmatteru)
+            node["raw"] = text       # surový text souboru včetně frontmatteru
+        else:
+            node["content"] = text
+            node["raw"] = text
+
+    return node
 
 
 def walk(path: Path, depth: int = 0, max_depth: int = 4) -> dict:

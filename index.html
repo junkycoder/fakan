@@ -14,7 +14,14 @@
     </div>
   </main>
 
-  <nav class="tabs" id="tabs" aria-label="Sekce"></nav>
+  <nav class="nav" id="nav" aria-label="Navigace">
+    <div class="nav__home" data-nav-home tabindex="0">
+      <button class="nav__home-btn" type="button" aria-label="Sekce" data-home-btn>~/</button>
+      <div class="nav__dropdown" id="nav-dropdown"></div>
+    </div>
+    <span class="nav__sep" aria-hidden="true"></span>
+    <div class="nav__tabs" id="nav-tabs"></div>
+  </nav>
 
   <div class="panels" id="panels" aria-live="polite"></div>
 

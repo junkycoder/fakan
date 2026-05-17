@@ -1,0 +1,7 @@
+/* fakan.cz splash — minimální */
+:root {
+  --bg: #0f0f12;
+  --fg: #ececea;
+  --muted: #8a8a90;
+}
+body { background: var(--bg); color: var(--fg); }

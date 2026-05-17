@@ -51,6 +51,7 @@ function fileMeta(child) {
     slug: child.slug,
     title: child.title,
     content: child.content,
+    raw: child.raw,
   };
 }
 
@@ -61,14 +62,26 @@ const charForDirs = (d) => {
 
 // --- layout: down-body (standardní `tree`) -----------------------------------
 // Vrátí nový `body` grid s trunk col = 0 a první dítě na row 0.
+// `sepTop` = počet prázdných řádků mezi top-level dětmi (vizuální oddělení skupin).
 
-function layoutBody(children, pathPrefix = '') {
+function layoutBody(children, pathPrefix = '', sepTop = 1) {
   const g = makeGrid();
   let cursor = 0;
 
-  const walk = (subs, prefix, parentPath) => {
+  const walk = (subs, prefix, parentPath, depth) => {
     const n = subs.length;
     for (let i = 0; i < n; i++) {
+      // prázdný řádek mezi top-level skupinami (jen depth 0, ne před prvním dítětem)
+      if (depth === 0 && i > 0 && sepTop > 0) {
+        for (let s = 0; s < sepTop; s++) {
+          const blank = cursor++;
+          for (let j = 0; j < prefix.length; j++) {
+            if (prefix[j] === '|') gridConn(g, blank, j, { n: true, s: true });
+          }
+          gridConn(g, blank, prefix.length, { n: true, s: true });
+        }
+      }
+
       const child = subs[i];
       const isLast = i === n - 1;
       const row = cursor++;
@@ -95,12 +108,12 @@ function layoutBody(children, pathPrefix = '') {
 
       if (child.children && child.children.length) {
         const newPrefix = prefix + (isLast ? '    ' : '|   ');
-        walk(child.children, newPrefix, path);
+        walk(child.children, newPrefix, path, depth + 1);
       }
     }
   };
 
-  walk(children, '', pathPrefix);
+  walk(children, '', pathPrefix, 0);
   return g;
 }
 
@@ -551,61 +564,185 @@ function renderMarkdown(md) {
   return paras.replace(/ B(\d+) /g, (_, i) => blocks[Number(i)]);
 }
 
-// --- panel windows ----------------------------------------------------------
-// Víc oken zároveň. Tažení za hlavičku, resize přes CSS `resize: both`.
-// Klik na uzel = nový panel; existujicí panel se vytáhne dopředu.
+// --- okna (panely) ----------------------------------------------------------
+// Klik = jedno velké hlavní okno (replace).
+// Cmd/Ctrl+Klik = malý preview panel (additive).
+// Drag za hlavičku, doubleclick maximalizuje, resize roh.
+// Play/build tlačítko přepíná mezi zdrojákem a vyrendrovaným náhledem.
 
-const openPanels = new Map(); // path → panel element
+let mainPanel = null;          // { element, node, path, mode, isMax, savedStyles }
+const previewPanels = new Map(); // path → panel
+let activePanel = null;          // okno s yellow headerem
 let panelZ = 100;
+let panelNavListener = null;     // callback do nav re-renderu
+let treeNodes = [];              // všechny uzly, pro sourozeneckou auto-otevírku
 
-function panelBodyHtml(node) {
+function allPanels() {
+  const out = [];
+  if (mainPanel) out.push(mainPanel);
+  for (const p of previewPanels.values()) out.push(p);
+  return out;
+}
+
+function setActive(panel) {
+  if (activePanel === panel) return;
+  if (activePanel) activePanel.element.classList.remove('is-active');
+  activePanel = panel;
+  if (panel) panel.element.classList.add('is-active');
+  if (panelNavListener) panelNavListener();
+}
+
+function pathLabel(node) {
+  const p = node.path || '';
+  if (!p) return '~/';
+  // dir → trailing slash; root je '~/'
+  return '~/' + (node.type === 'dir' ? `${p}/` : p);
+}
+
+function sourceBody(node) {
   if (node.type === 'root') {
-    return '<p>Osobní web. Vyberte větev nebo list.</p>';
+    return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
   }
   if (node.type === 'dir') {
     return node.hasChildren
-      ? '<p>Adresář — uvnitř najdete listy.</p>'
-      : '<p class="empty">Zatím prázdné.</p>';
+      ? '<p class="panel__note">Adresář — rozbalte uzly v mindmapě.</p>'
+      : '<p class="panel__note empty">Zatím prázdné.</p>';
+  }
+  const raw = node.raw != null ? node.raw : (node.content || '');
+  if (!raw) {
+    return `<p class="panel__note empty">Prázdný soubor <code>${escapeHtml(node.filename || node.name)}</code>.</p>`;
+  }
+  return `<pre class="src"><code>${escapeHtml(raw)}</code></pre>`;
+}
+
+function renderedBody(node) {
+  if (node.kind === 'md' && node.content) {
+    return `<div class="md">${renderMarkdown(node.content)}</div>`;
+  }
+  const fn = (node.filename || node.name || '').toLowerCase();
+  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) {
+    // self-contained iframe přes srcdoc; sandbox bez allow-same-origin = bezpečné
+    const srcdoc = node.raw
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
   }
   if (node.kind === 'md') {
-    if (node.content && node.content.trim()) {
-      return `<div class="md">${renderMarkdown(node.content)}</div>`;
-    }
-    return `<p class="empty">Prázdný soubor <code>${escapeHtml(node.filename || node.name)}</code>.</p>`;
+    return `<p class="panel__note empty">Žádný obsah k vyrendrování.</p>`;
   }
-  return `<p>Soubor <code>${escapeHtml(node.filename || node.name)}</code>.</p>`;
+  return sourceBody(node);
 }
 
-function bringToFront(panel) {
+function canBuild(node) {
+  if (node.kind === 'md' && node.content && node.content.trim()) return true;
+  const fn = (node.filename || node.name || '').toLowerCase();
+  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return true;
+  return false;
+}
+
+function bringToFront(el) {
   panelZ++;
-  panel.style.zIndex = String(panelZ);
+  el.style.zIndex = String(panelZ);
 }
 
-function setupPanelDrag(panel) {
-  const head = panel.querySelector('[data-panel-head]');
+function createPanel(node, variant) {
+  const path = node.path || '/';
+  const el = document.createElement('section');
+  el.className = `panel panel--${variant}`;
+  el.dataset.path = path;
+
+  const buildable = canBuild(node);
+  el.innerHTML = `
+    <header class="panel__head" data-panel-head>
+      <span class="panel__path">${escapeHtml(pathLabel(node))}</span>
+      <div class="panel__actions">
+        ${buildable ? '<button class="panel__btn panel__btn--play" type="button" data-panel-play title="Sestavit / náhled" aria-label="Sestavit">play</button>' : ''}
+        <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
+        <button class="panel__btn panel__btn--close" type="button" data-panel-close title="Zavřít" aria-label="Zavřít">×</button>
+      </div>
+    </header>
+    <div class="panel__body" data-panel-body>${sourceBody(node)}</div>
+  `;
+
+  const panel = {
+    element: el,
+    node,
+    path,
+    variant,
+    mode: 'source',
+    isMax: false,
+    savedStyles: null,
+  };
+  return panel;
+}
+
+function positionPanel(panel) {
+  const el = panel.element;
+  if (panel.variant === 'main') {
+    el.style.right = '16px';
+    el.style.top = `calc(16px + var(--safe-t))`;
+  } else {
+    const stack = previewPanels.size;
+    el.style.right = `${24 + stack * 28}px`;
+    el.style.top = `calc(${24 + stack * 28}px + var(--safe-t))`;
+  }
+}
+
+function setupPanelInteractions(panel) {
+  const el = panel.element;
+  const head = el.querySelector('[data-panel-head]');
+  const playBtn = el.querySelector('[data-panel-play]');
+  const maxBtn = el.querySelector('[data-panel-max]');
+  const closeBtn = el.querySelector('[data-panel-close]');
+  const bodyEl = el.querySelector('[data-panel-body]');
+
+  closeBtn.addEventListener('click', () => closePanel(panel));
+
+  if (playBtn) {
+    playBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      panel.mode = panel.mode === 'source' ? 'rendered' : 'source';
+      bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
+      playBtn.classList.toggle('is-active', panel.mode === 'rendered');
+      playBtn.textContent = panel.mode === 'source' ? 'play' : 'src';
+      playBtn.title = panel.mode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
+      // .html: po sestavení rovnou otevři sourozence (css/js/md) jako preview vedle
+      const fn = (panel.node.filename || panel.node.name || '').toLowerCase();
+      if (panel.mode === 'rendered' && (fn.endsWith('.html') || fn.endsWith('.htm'))) {
+        openSiblingFiles(panel.node);
+        setActive(panel); // hlavní okno zůstává v popředí
+      }
+    });
+  }
+
+  maxBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMax(panel); });
+  head.addEventListener('dblclick', (e) => {
+    if (e.target.closest('.panel__btn')) return;
+    toggleMax(panel);
+  });
+
+  // drag
   let dragging = false;
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
-
   head.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('[data-panel-close]')) return;
-    bringToFront(panel);
+    if (e.target.closest('.panel__btn')) return;
+    if (panel.isMax) return;
+    bringToFront(el);
     dragging = true;
     head.classList.add('is-dragging');
-    const rect = panel.getBoundingClientRect();
-    // přepneme z right/bottom na left/top, aby šel volně posouvat
-    panel.style.left = `${rect.left}px`;
-    panel.style.top = `${rect.top}px`;
-    panel.style.right = 'auto';
-    panel.style.bottom = 'auto';
+    const rect = el.getBoundingClientRect();
+    el.style.left = `${rect.left}px`;
+    el.style.top = `${rect.top}px`;
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
     startX = e.clientX; startY = e.clientY;
     startLeft = rect.left; startTop = rect.top;
-    head.setPointerCapture(e.pointerId);
+    try { head.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   });
   head.addEventListener('pointermove', (e) => {
     if (!dragging) return;
-    panel.style.left = `${startLeft + (e.clientX - startX)}px`;
-    panel.style.top = `${startTop + (e.clientY - startY)}px`;
+    el.style.left = `${startLeft + (e.clientX - startX)}px`;
+    el.style.top = `${startTop + (e.clientY - startY)}px`;
   });
   const endDrag = (e) => {
     if (!dragging) return;
@@ -615,83 +752,191 @@ function setupPanelDrag(panel) {
   };
   head.addEventListener('pointerup', endDrag);
   head.addEventListener('pointercancel', endDrag);
+
+  el.addEventListener('pointerdown', () => {
+    bringToFront(el);
+    setActive(panel);
+  }, true);
 }
 
-function openPanel(node) {
-  const path = node.path || '/';
-  const existing = openPanels.get(path);
-  if (existing) {
-    bringToFront(existing);
-    return existing;
+function toggleMax(panel) {
+  const el = panel.element;
+  const maxBtn = el.querySelector('[data-panel-max]');
+  if (panel.isMax) {
+    const s = panel.savedStyles || {};
+    el.style.left = s.left || ''; el.style.top = s.top || '';
+    el.style.right = s.right || ''; el.style.bottom = s.bottom || '';
+    el.style.width = s.width || ''; el.style.height = s.height || '';
+    el.classList.remove('panel--max');
+    panel.isMax = false;
+    if (maxBtn) { maxBtn.textContent = '▢'; maxBtn.title = 'Maximalizovat'; }
+  } else {
+    panel.savedStyles = {
+      left: el.style.left, top: el.style.top,
+      right: el.style.right, bottom: el.style.bottom,
+      width: el.style.width, height: el.style.height,
+    };
+    el.style.left = '8px';
+    el.style.top = 'calc(8px + var(--safe-t))';
+    el.style.right = '8px';
+    el.style.bottom = 'calc(64px + var(--safe-b))'; // místo na nav
+    el.style.width = 'auto';
+    el.style.height = 'auto';
+    el.classList.add('panel--max');
+    panel.isMax = true;
+    if (maxBtn) { maxBtn.textContent = '▭'; maxBtn.title = 'Obnovit'; }
   }
+}
 
-  const panel = document.createElement('section');
-  panel.className = 'panel';
-  panel.dataset.path = path;
-  const displayPath = path === '/' ? 'fakan.cz' : path;
-  panel.innerHTML = `
-    <header class="panel__head" data-panel-head>
-      <span class="panel__path">${escapeHtml(displayPath)}</span>
-      <button class="panel__close" type="button" data-panel-close aria-label="Zavřít">×</button>
-    </header>
-    <div class="panel__body">${panelBodyHtml(node)}</div>
-  `;
-
-  // pozice se zalomeným stagger offsetem
-  const stack = openPanels.size;
-  panel.style.right = `${16 + stack * 28}px`;
-  panel.style.top = `${16 + stack * 28}px`;
-
-  document.getElementById('panels').appendChild(panel);
-  openPanels.set(path, panel);
-  bringToFront(panel);
-  setupPanelDrag(panel);
-
-  panel.querySelector('[data-panel-close]').addEventListener('click', () => {
-    panel.remove();
-    openPanels.delete(path);
-  });
-  panel.addEventListener('pointerdown', () => bringToFront(panel), true);
-
+function openMain(node) {
+  if (mainPanel) {
+    if (mainPanel === activePanel) activePanel = null;
+    mainPanel.element.remove();
+    mainPanel = null;
+  }
+  const panel = createPanel(node, 'main');
+  positionPanel(panel);
+  document.getElementById('panels').appendChild(panel.element);
+  setupPanelInteractions(panel);
+  bringToFront(panel.element);
+  mainPanel = panel;
+  if (panelNavListener) panelNavListener();
+  setActive(panel);
   return panel;
 }
 
-// --- záložky (top-level sekce) ----------------------------------------------
-
-function renderTabs(grid, vp) {
-  const tabs = document.getElementById('tabs');
-  const topDirs = grid.nodes.filter((n) => n.type === 'dir' && n.path && !n.path.includes('/'));
-  // root jako první (návrat domů)
-  const rootNode = grid.nodes.find((n) => n.type === 'root');
-  const items = rootNode ? [rootNode, ...topDirs] : topDirs;
-
-  tabs.innerHTML = '';
-  for (const item of items) {
-    const a = document.createElement('a');
-    a.className = 'tab';
-    a.dataset.path = item.path || '/';
-    a.href = '#';
-    a.textContent = item.type === 'root' ? 'home' : item.name;
-    tabs.appendChild(a);
+function openPreview(node) {
+  const path = node.path || '/';
+  const existing = previewPanels.get(path);
+  if (existing) {
+    bringToFront(existing.element);
+    setActive(existing);
+    return existing;
   }
-
-  tabs.addEventListener('click', (e) => {
-    const a = e.target.closest('.tab');
-    if (!a) return;
-    e.preventDefault();
-    const path = a.dataset.path;
-    const node = grid.nodes.find((n) => (n.path || '') === (path === '/' ? '' : path));
-    if (!node) return;
-    focusNode(node);
-    vp.panToNode(node);
-    if (node.type !== 'root') openPanel(node);
-    updateActiveTab(path);
-  });
+  const panel = createPanel(node, 'preview');
+  positionPanel(panel);
+  document.getElementById('panels').appendChild(panel.element);
+  setupPanelInteractions(panel);
+  bringToFront(panel.element);
+  previewPanels.set(path, panel);
+  if (panelNavListener) panelNavListener();
+  setActive(panel);
+  return panel;
 }
 
-function updateActiveTab(path) {
-  document.querySelectorAll('.tab').forEach((el) => {
-    el.classList.toggle('tab--active', el.dataset.path === path);
+function openSiblingFiles(node) {
+  if (!node.path || node.type === 'root') return;
+  const parts = node.path.split('/');
+  const parentPath = parts.slice(0, -1).join('/');
+  for (const n of treeNodes) {
+    if (n === node) continue;
+    if (n.type !== 'file') continue;
+    const nParts = (n.path || '').split('/');
+    const nParent = nParts.slice(0, -1).join('/');
+    if (nParent === parentPath) openPreview(n);
+  }
+}
+
+function closePanel(panel) {
+  panel.element.remove();
+  if (panel === mainPanel) mainPanel = null;
+  else previewPanels.delete(panel.path);
+  if (activePanel === panel) {
+    activePanel = null;
+    // aktivuj nejvyšší zbylý
+    const remaining = allPanels();
+    if (remaining.length) {
+      const top = remaining.reduce((a, b) => (
+        Number(a.element.style.zIndex || 0) > Number(b.element.style.zIndex || 0) ? a : b
+      ));
+      setActive(top);
+    }
+  }
+  if (panelNavListener) panelNavListener();
+}
+
+// --- spodní navigace --------------------------------------------------------
+
+function renderNav(grid, vp) {
+  const dropdown = document.getElementById('nav-dropdown');
+  const tabs = document.getElementById('nav-tabs');
+
+  // sekce v dropdown (top-level dirs)
+  const topDirs = grid.nodes.filter((n) => n.type === 'dir' && n.path && !n.path.includes('/'));
+  dropdown.innerHTML = '';
+  for (const d of topDirs) {
+    const a = document.createElement('a');
+    a.className = 'nav__section';
+    a.href = '#';
+    a.dataset.path = d.path;
+    a.textContent = d.name;
+    dropdown.appendChild(a);
+  }
+
+  // taby = všechny otevřené panely
+  const renderTabs = () => {
+    tabs.innerHTML = '';
+    const all = [];
+    if (mainPanel) all.push(mainPanel);
+    for (const p of previewPanels.values()) all.push(p);
+    if (!all.length) {
+      const empty = document.createElement('span');
+      empty.className = 'nav__empty';
+      empty.textContent = 'žádné otevřené okno';
+      tabs.appendChild(empty);
+      return;
+    }
+    for (const p of all) {
+      const tab = document.createElement('div');
+      let cls = 'nav__tab';
+      if (p.variant === 'main') cls += ' nav__tab--main';
+      if (p === activePanel) cls += ' is-active';
+      tab.className = cls;
+      tab.dataset.path = p.path;
+      tab.innerHTML = `
+        <span class="nav__tab-name">${escapeHtml(p.node.name)}</span>
+        <button class="nav__tab-close" type="button" aria-label="Zavřít">×</button>
+      `;
+      tabs.appendChild(tab);
+    }
+  };
+  renderTabs();
+  panelNavListener = renderTabs;
+
+  // klik handlery
+  document.getElementById('nav').addEventListener('click', (e) => {
+    const homeBtn = e.target.closest('[data-home-btn]');
+    if (homeBtn) {
+      const root = grid.nodes.find((n) => n.type === 'root');
+      if (root) { focusNode(root); vp.panToNode(root); openMain(root); }
+      return;
+    }
+    const section = e.target.closest('.nav__section');
+    if (section) {
+      e.preventDefault();
+      const path = section.dataset.path;
+      const node = grid.nodes.find((n) => (n.path || '') === path);
+      if (node) { focusNode(node); vp.panToNode(node); openMain(node); }
+      return;
+    }
+    const tabClose = e.target.closest('.nav__tab-close');
+    if (tabClose) {
+      e.stopPropagation();
+      const tab = tabClose.closest('.nav__tab');
+      const path = tab.dataset.path;
+      if (mainPanel?.path === path) closePanel(mainPanel);
+      else {
+        const p = previewPanels.get(path);
+        if (p) closePanel(p);
+      }
+      return;
+    }
+    const tab = e.target.closest('.nav__tab');
+    if (tab) {
+      const path = tab.dataset.path;
+      const panel = mainPanel?.path === path ? mainPanel : previewPanels.get(path);
+      if (panel) { bringToFront(panel.element); setActive(panel); }
+    }
   });
 }
 
@@ -745,6 +990,68 @@ function findNeighbor(current, direction, nodes) {
 }
 
 function setupKeyboard(grid, vp) {
+  // strom: parent ← path, children ← path; siblings = stejný parent
+  const byPath = new Map();
+  const childrenByPath = new Map();
+  const topQuadrant = new Map(); // path → 'north'|'south'|'east'|'west'
+  for (const n of grid.nodes) byPath.set(n.path || '', n);
+  for (const n of grid.nodes) {
+    if (n.type === 'root') continue;
+    const parts = n.path.split('/');
+    const parentPath = parts.slice(0, -1).join('/');
+    if (!childrenByPath.has(parentPath)) childrenByPath.set(parentPath, []);
+    childrenByPath.get(parentPath).push(n);
+    if (parts.length === 1) topQuadrant.set(n.path, classify(n));
+  }
+  // přiřaď kvadrant všem potomkům (zděděný z top-level)
+  for (const n of grid.nodes) {
+    if (n.type === 'root') { n.quadrant = null; continue; }
+    n.quadrant = topQuadrant.get(n.path.split('/')[0]);
+  }
+
+  const move = (current, action) => {
+    if (action === 'parent') {
+      const parts = (current.path || '').split('/');
+      const parentPath = parts.slice(0, -1).join('/');
+      return byPath.get(parentPath);
+    }
+    if (action === 'child') {
+      const kids = childrenByPath.get(current.path || '') || [];
+      return kids[0];
+    }
+    if (action === 'prevSibling' || action === 'nextSibling') {
+      if (current.type === 'root') return null;
+      const parts = current.path.split('/');
+      const parentPath = parts.slice(0, -1).join('/');
+      let sibs = childrenByPath.get(parentPath) || [];
+      // top-level děti: omezit na stejný kvadrant
+      if (parts.length === 1) {
+        const q = current.quadrant;
+        sibs = sibs.filter((s) => topQuadrant.get(s.path) === q);
+      }
+      const i = sibs.indexOf(current);
+      if (i < 0) return null;
+      const j = action === 'prevSibling' ? i - 1 : i + 1;
+      return sibs[j];
+    }
+    return null;
+  };
+
+  // pro root: šipka → kvadrant prvního top-level dítěte
+  const rootQuadrantArrow = { up: 'north', down: 'south', left: 'west', right: 'east' };
+  const goToQuadrant = (q) => {
+    const topLevels = childrenByPath.get('') || [];
+    return topLevels.find((n) => topQuadrant.get(n.path) === q);
+  };
+
+  // pro běžný uzel: šipka → action podle kvadrantu (parent leží vždy směrem k rootu)
+  const QUAD_ACTIONS = {
+    south: { up: 'parent', down: 'child', left: 'prevSibling', right: 'nextSibling' },
+    north: { down: 'parent', up: 'child', left: 'prevSibling', right: 'nextSibling' },
+    east:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
+    west:  { right: 'parent', left: 'child', up: 'prevSibling', down: 'nextSibling' },
+  };
+
   window.addEventListener('keydown', (e) => {
     // pokud uživatel píše do inputu / contenteditable, šipky nepřebíráme
     const tgt = e.target;
@@ -759,10 +1066,16 @@ function setupKeyboard(grid, vp) {
     };
     if (e.key in dirMap) {
       e.preventDefault();
-      const current = grid.nodes.find((n) => (n.path || '') === focusedPath)
-        || grid.nodes.find((n) => n.type === 'root');
+      const dir = dirMap[e.key];
+      const current = byPath.get(focusedPath) || byPath.get('');
       if (!current) return;
-      const next = findNeighbor(current, dirMap[e.key], grid.nodes);
+      let next = null;
+      if (current.type === 'root') {
+        next = goToQuadrant(rootQuadrantArrow[dir]);
+      } else {
+        const action = QUAD_ACTIONS[current.quadrant]?.[dir];
+        if (action) next = move(current, action);
+      }
       if (next) {
         focusNode(next);
         vp.ensureVisible(next);
@@ -774,19 +1087,17 @@ function setupKeyboard(grid, vp) {
       const node = grid.nodes.find((n) => (n.path || '') === focusedPath);
       if (node) {
         e.preventDefault();
-        openPanel(node);
+        if (e.metaKey || e.ctrlKey) openPreview(node);
+        else openMain(node);
       }
       return;
     }
 
     if (e.key === 'Escape') {
-      // zavře nejvyšší (poslední přidaný) panel
-      const last = Array.from(openPanels.values()).pop();
-      if (last) {
-        const path = last.dataset.path;
-        last.remove();
-        openPanels.delete(path);
-      }
+      // zavře nejvyšší preview, pokud existuje, jinak main
+      const lastPreview = Array.from(previewPanels.values()).pop();
+      if (lastPreview) closePanel(lastPreview);
+      else if (mainPanel) closePanel(mainPanel);
     }
   });
 }
@@ -806,12 +1117,13 @@ async function boot() {
   const grid = buildMindmap(tree);
   const bb = paint(map, hits, grid);
   const rootNode = grid.nodes.find((n) => n.type === 'root');
+  treeNodes = grid.nodes;
 
   const vp = setupViewport(canvas, viewport, () => ({ bb, rootNode }));
   requestAnimationFrame(vp.center);
   window.addEventListener('resize', vp.center);
 
-  renderTabs(grid, vp);
+  renderNav(grid, vp);
   setupKeyboard(grid, vp);
   if (rootNode) focusNode(rootNode);
 
@@ -822,8 +1134,8 @@ async function boot() {
     const node = grid.nodes.find((n) => (n.path || '') === (path === '/' ? '' : path));
     if (!node) return;
     focusNode(node);
-    openPanel(node);
-    updateActiveTab(path);
+    if (e.metaKey || e.ctrlKey) openPreview(node);
+    else openMain(node);
   });
 }
 
