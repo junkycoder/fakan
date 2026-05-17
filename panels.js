@@ -5,7 +5,7 @@ import { mountEditor } from './editor.js';
 import {
   state,
   PANEL_CASCADE,
-  escapeHtml, fileExt, mediaKind, humanSize,
+  escapeHtml, mediaKind,
   parseFrontmatter,
   applyEditToNode, saveEditOverride,
 } from './state.js';
@@ -299,7 +299,6 @@ function rerenderPanelBody(panel) {
   bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
   mountEditorIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
-  renderPanelFoot(panel);
 }
 
 function revokePanelUrls(panel) {
@@ -349,80 +348,6 @@ async function mountMediaIfNeeded(panel, bodyEl) {
   }
 }
 
-// --- panel footer (info o souboru + download odkaz) -------------------------
-
-function nodeKindLabel(node) {
-  if (!node) return '';
-  if (node.type === 'root') return 'kořen mindmapy';
-  if (node.type === 'dir') {
-    const n = (node.children || []).length;
-    return n ? `adresář · ${n} položek` : 'prázdný adresář';
-  }
-  const mk = mediaKind(node);
-  if (mk === 'video') return 'video';
-  if (mk === 'audio') return 'audio';
-  if (mk === 'image') return 'obrázek';
-  if (mk === 'pdf') return 'PDF';
-  if (node.kind === 'web') return 'web snapshot';
-  if (node.kind === 'md') return 'markdown';
-  if (node.kind === 'text') return 'text';
-  return fileExt(node).replace('.', '') || 'soubor';
-}
-
-function knownSize(node) {
-  if (!node) return null;
-  if (node._file && typeof node._file.size === 'number') return node._file.size;
-  // text v raw — počet bytů přes Blob (rychlejší a přesnější než TextEncoder)
-  if (typeof node.raw === 'string') return new Blob([node.raw]).size;
-  if (typeof node.content === 'string') return new Blob([node.content]).size;
-  return null;
-}
-
-async function renderPanelFoot(panel) {
-  if (!panel || !panel.element || !panel.element.isConnected) return;
-  const foot = panel.element.querySelector('[data-panel-foot]');
-  if (!foot) return;
-  const node = panel.node;
-  const kindLabel = nodeKindLabel(node);
-  // adresář/root → jen info, žádný download
-  if (!node || node.type !== 'file') {
-    foot.innerHTML = `<span class="panel__foot-info">${escapeHtml(kindLabel)}</span>`;
-    return;
-  }
-  const filename = node.filename || node.name || 'soubor';
-  const sz = knownSize(node);
-  const sizeStr = sz != null ? humanSize(sz) : '';
-  const infoBits = [kindLabel, sizeStr].filter(Boolean).join(' · ');
-
-  // URL pro stažení: přímá (statický deploy / web snapshot) nebo blob
-  let url = nodeDirectUrl(node);
-  let isBlob = false;
-  if (!url) {
-    try {
-      const blob = await nodeFileBlob(node);
-      if (blob) {
-        url = URL.createObjectURL(blob);
-        panel.objectUrls.push(url);
-        isBlob = true;
-      }
-    } catch {}
-  }
-  if (!foot.isConnected) return;
-  if (!url) {
-    foot.innerHTML = `<span class="panel__foot-info">${escapeHtml(infoBits)}</span>`;
-    return;
-  }
-  // single descriptive link = info o souboru + download/share v jednom
-  const dlAttr = isBlob ? ` download="${escapeHtml(filename)}"` : ` download="${escapeHtml(filename)}"`;
-  foot.innerHTML = `
-    <a class="panel__foot-link" href="${url}"${dlAttr} target="_blank" rel="noopener" title="Stáhnout / sdílet">
-      <span class="panel__foot-link-name">${escapeHtml(filename)}</span>
-      ${infoBits ? `<span class="panel__foot-link-meta">${escapeHtml(infoBits)}</span>` : ''}
-      <span class="panel__foot-link-act" aria-hidden="true">↓</span>
-    </a>
-  `;
-}
-
 export function bringToFront(el) {
   state.panelZ++;
   el.style.zIndex = String(state.panelZ);
@@ -454,7 +379,6 @@ function createPanel(node, variant) {
       </div>
     </header>
     <div class="panel__body" data-panel-body>${initialMode === 'source' ? sourceBody(node) : renderedBody(node)}</div>
-    <footer class="panel__foot" data-panel-foot></footer>
   `;
 
   const panel = {
@@ -542,13 +466,12 @@ function setupPanelInteractions(panel) {
 
   mountEditorIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
-  renderPanelFoot(panel);
   closeBtn.addEventListener('click', () => closePanel(panel));
 
   // lazy fetch obsahu (statický deploy) — po doručení re-renderuje body
   if (nodeNeedsLazyContent(panel.node)) {
     ensureNodeContent(panel.node)
-      .then(() => { rerenderPanelBody(panel); renderPanelFoot(panel); })
+      .then(() => { rerenderPanelBody(panel); })
       .catch(() => {});
   }
 
@@ -592,7 +515,6 @@ function setupPanelInteractions(panel) {
       bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
       mountEditorIfNeeded(panel, bodyEl);
       mountMediaIfNeeded(panel, bodyEl);
-      renderPanelFoot(panel);
       playBtn.classList.toggle('is-active', panel.mode === 'rendered');
       playBtn.textContent = panel.mode === 'source' ? 'play' : 'src';
       playBtn.title = panel.mode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
