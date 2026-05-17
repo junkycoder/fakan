@@ -250,6 +250,13 @@ button {
   min-width: 180px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.18);
 }
+.nav__dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -8px;
+  height: 8px;
+}
 .nav__home:hover .nav__dropdown,
 .nav__home:focus-within .nav__dropdown { display: flex; }
 .nav__home.is-open .nav__dropdown { display: flex; }
@@ -798,6 +805,13 @@ button {
   gap: 2px;
   min-width: 220px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+}
+.nav__source-dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -8px;
+  height: 8px;
 }
 .nav__source:hover .nav__source-dropdown,
 .nav__source:focus-within .nav__source-dropdown { display: flex; }
