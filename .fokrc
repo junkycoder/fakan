@@ -18,3 +18,6 @@ bin
 
 # third-party knihovny
 vendor
+
+# e2e Playwright testy (vlastní package.json, ne obsah webu)
+tests

@@ -1,0 +1,17 @@
+{
+  "name": "fakan-tests",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "E2e a feature testy pro fakan.cz (Playwright). Izolováno od hlavního stacku.",
+  "scripts": {
+    "test": "playwright test specs/",
+    "promo": "playwright test promo/ --update-snapshots",
+    "ui": "playwright test --ui",
+    "update-baseline": "playwright test specs/ --update-snapshots",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

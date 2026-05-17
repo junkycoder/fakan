@@ -39,3 +39,8 @@ coverage/
 
 # Claude Code interní (worktrees subagentů, nepatří do gitu)
 .claude/worktrees/
+
+# Playwright testy (běhové artefakty; specs/, promo/, screenshots/ jsou commitované)
+tests/test-results/
+tests/playwright-report/
+tests/playwright/.cache/
