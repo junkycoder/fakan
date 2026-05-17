@@ -15,6 +15,22 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 ---
 
+## 2026-05-17 16:41 — claude
+
+Ověřeno na simulovaném drop ~/mblue (Ruby/Rails se 18 vstupy včetně `Gemfile`,
+`Rakefile`, `Capfile`, `config.ru`, `.gitignore`, `*.rb`, `*.erb`, `*.rake`):
+
+- `.rb`/`Gemfile`/`Rakefile`/`config.ru`/`.gitignore` jdou jako `kind: text`,
+  v panelu se obsah ukáže (otestoval jsem `config/routes.rb` — content viditelný)
+- `tmp/`, `log/`, `node_modules/` skryté default-fallbackem
+- žádný `Uncaught RangeError` v console (defenzivní `Math.max(0, bb.width|0)`
+  v `renderGrid` a `renderTreeInlineHTML` brání patologickému `new Array(N)`)
+
+Změny ve `script.js` se mezi sessionemi natáhly do commitů 878f556 / a0cd3da,
+takže nic separátně. Pushnuto.
+
+---
+
 ## 2026-05-17 16:36 — claude
 
 `.gitignore` (root + vnořené) se teď respektuje ve všech třech zdrojích —
