@@ -992,10 +992,13 @@ function showGithubDialog() {
   wrap.innerHTML = `
     <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Připojit GitHub repo">
       <h2 class="gh-dialog__title">Připojit GitHub repo</h2>
-      <label class="gh-dialog__field">
+      <div class="gh-dialog__field gh-dialog__field--combo">
         <span>Repo</span>
-        <input type="text" data-gh-repo placeholder="owner/repo nebo https://github.com/owner/repo" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-      </label>
+        <div class="gh-combo" data-gh-combo>
+          <input type="text" data-gh-repo placeholder="owner/repo, URL nebo vyberte ze seznamu" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <div class="gh-combo__list" data-gh-list hidden></div>
+        </div>
+      </div>
       <label class="gh-dialog__field">
         <span>Větev <em>(volitelně)</em></span>
         <input type="text" data-gh-branch placeholder="default branch" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
@@ -1004,7 +1007,7 @@ function showGithubDialog() {
         <span>Token <em>(volitelně, pro privátní repo)</em></span>
         <input type="password" data-gh-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
       </label>
-      <p class="gh-dialog__hint">Token zůstane jen lokálně v IndexedDB tohohle prohlížeče. Bez tokenu lze připojit jen veřejný repo.</p>
+      <p class="gh-dialog__hint">Token zůstane jen lokálně v IndexedDB tohohle prohlížeče. S tokenem se v nabídce objeví i vaše repa.</p>
       <div class="gh-dialog__status" data-gh-status></div>
       <div class="gh-dialog__buttons">
         <button type="button" class="gh-dialog__btn" data-gh-cancel>Zrušit</button>
@@ -1015,35 +1018,225 @@ function showGithubDialog() {
   document.body.appendChild(wrap);
 
   const repoIn = wrap.querySelector('[data-gh-repo]');
+  const listEl = wrap.querySelector('[data-gh-list]');
   const branchIn = wrap.querySelector('[data-gh-branch]');
   const tokenIn = wrap.querySelector('[data-gh-token]');
   const okBtn = wrap.querySelector('[data-gh-ok]');
   const cancelBtn = wrap.querySelector('[data-gh-cancel]');
   const statusEl = wrap.querySelector('[data-gh-status]');
 
+  // --- combobox stav --------------------------------------------------------
+  let recentEntries = [];   // [{owner, repo, branch, token}]
+  let myRepos = null;       // null = nenačteno; pole = výsledek
+  let myReposLoading = false;
+  let myReposError = null;
+  let activeToken = null;   // token, kterým byly načtené myRepos
+  let currentItems = [];    // momentálně vykreslené (vč. headers)
+  let highlightIdx = -1;
+
+  const tokenForFetch = () => {
+    const fromInput = tokenIn.value.trim();
+    if (fromInput) return fromInput;
+    if (state.githubSpec?.token) return state.githubSpec.token;
+    const fromRecent = recentEntries.find((e) => e.token);
+    return fromRecent?.token || null;
+  };
+
+  const loadMyRepos = async () => {
+    const tk = tokenForFetch();
+    if (!tk || myReposLoading) return;
+    if (activeToken === tk && (myRepos !== null || myReposError)) return;
+    activeToken = tk;
+    myReposLoading = true;
+    myReposError = null;
+    renderList();
+    try {
+      const repos = [];
+      for (let page = 1; page <= 3; page++) {
+        const r = await fetch(`https://api.github.com/user/repos?per_page=100&sort=pushed&page=${page}`, {
+          headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${tk}` },
+        });
+        if (!r.ok) {
+          if (r.status === 401) throw new Error('token neplatný');
+          if (r.status === 403) throw new Error('rate limit nebo přístup odmítnut');
+          throw new Error(`GitHub ${r.status}`);
+        }
+        const data = await r.json();
+        if (!Array.isArray(data) || !data.length) break;
+        for (const d of data) {
+          if (d?.owner?.login && d?.name) repos.push({
+            owner: d.owner.login,
+            repo: d.name,
+            branch: d.default_branch || '',
+            private: !!d.private,
+            description: d.description || '',
+          });
+        }
+        if (data.length < 100) break;
+      }
+      myRepos = repos;
+    } catch (err) {
+      myReposError = err.message;
+      myRepos = [];
+    } finally {
+      myReposLoading = false;
+      renderList();
+    }
+  };
+
+  const renderList = () => {
+    const q = repoIn.value.trim().toLowerCase();
+    const matchQ = (e) => !q || `${e.owner}/${e.repo}`.toLowerCase().includes(q);
+    const items = [];
+
+    const recent = recentEntries.filter(matchQ);
+    if (recent.length) {
+      items.push({ kind: 'header', label: 'Nedávné' });
+      for (const e of recent) items.push({ kind: 'recent', data: e });
+    }
+
+    if (myRepos === null && tokenForFetch() && !myReposLoading) {
+      loadMyRepos();
+    }
+    if (myReposLoading) {
+      items.push({ kind: 'header', label: 'Moje repa' });
+      items.push({ kind: 'status', label: 'načítám…' });
+    } else if (myReposError) {
+      items.push({ kind: 'header', label: 'Moje repa' });
+      items.push({ kind: 'status', label: myReposError });
+    } else if (Array.isArray(myRepos) && myRepos.length) {
+      const recentKeys = new Set(recent.map((r) => `${r.owner}/${r.repo}`));
+      const mine = myRepos.filter(matchQ).filter((r) => !recentKeys.has(`${r.owner}/${r.repo}`));
+      if (mine.length) {
+        items.push({ kind: 'header', label: 'Moje repa' });
+        for (const r of mine.slice(0, 40)) items.push({ kind: 'mine', data: r });
+      }
+    }
+
+    currentItems = items;
+    if (highlightIdx >= 0 && (highlightIdx >= items.length || (items[highlightIdx]?.kind !== 'recent' && items[highlightIdx]?.kind !== 'mine'))) {
+      highlightIdx = -1;
+    }
+
+    if (!items.length) {
+      listEl.hidden = true;
+      listEl.innerHTML = '';
+      return;
+    }
+    listEl.hidden = false;
+    listEl.innerHTML = items.map((it, i) => {
+      if (it.kind === 'header') return `<div class="gh-combo__header">${escapeHtml(it.label)}</div>`;
+      if (it.kind === 'status') return `<div class="gh-combo__status">${escapeHtml(it.label)}</div>`;
+      const e = it.data;
+      const label = `${e.owner}/${e.repo}`;
+      let sub = '';
+      if (it.kind === 'recent' && e.branch) sub = `@${e.branch}`;
+      else if (it.kind === 'mine' && e.private) sub = 'private';
+      else if (it.kind === 'mine' && e.description) sub = e.description;
+      const icon = it.kind === 'recent' ? '⏱' : '★';
+      const cls = `gh-combo__item${i === highlightIdx ? ' is-active' : ''}`;
+      return `<button type="button" class="${cls}" data-idx="${i}">
+        <span class="gh-combo__icon" aria-hidden="true">${icon}</span>
+        <span class="gh-combo__label">${escapeHtml(label)}</span>
+        ${sub ? `<span class="gh-combo__sub">${escapeHtml(sub)}</span>` : ''}
+      </button>`;
+    }).join('');
+    listEl.querySelectorAll('[data-idx]').forEach((btn) => {
+      btn.addEventListener('mousedown', (e) => e.preventDefault());
+      btn.addEventListener('click', () => pickItem(parseInt(btn.dataset.idx, 10)));
+    });
+  };
+
+  const pickItem = (i) => {
+    const it = currentItems[i];
+    if (!it || (it.kind !== 'recent' && it.kind !== 'mine')) return;
+    const e = it.data;
+    repoIn.value = `${e.owner}/${e.repo}`;
+    if (it.kind === 'recent') {
+      if (e.branch) branchIn.value = e.branch;
+      if (e.token && !tokenIn.value) tokenIn.value = e.token;
+    } else if (it.kind === 'mine' && e.branch && !branchIn.value) {
+      // default branch z API nevyplňujeme — uživatel ji většinou nechce vidět;
+      // necháme prázdnou aby connectGithub zvolil default.
+    }
+    listEl.hidden = true;
+    highlightIdx = -1;
+    okBtn.focus();
+  };
+
+  // --- vstupy ---------------------------------------------------------------
   const close = () => {
     wrap.remove();
     document.removeEventListener('keydown', onKey);
   };
   const onKey = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-    if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); submit(); }
+    if (e.key === 'Escape') {
+      if (!listEl.hidden) { listEl.hidden = true; highlightIdx = -1; e.preventDefault(); return; }
+      e.preventDefault(); close(); return;
+    }
+    if (e.key === 'Enter' && !okBtn.disabled && document.activeElement !== repoIn) {
+      e.preventDefault(); submit();
+    }
   };
   document.addEventListener('keydown', onKey);
   cancelBtn.addEventListener('click', close);
   wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
 
+  repoIn.addEventListener('focus', () => renderList());
+  repoIn.addEventListener('input', () => { highlightIdx = -1; renderList(); });
+  repoIn.addEventListener('blur', () => {
+    setTimeout(() => { listEl.hidden = true; }, 120);
+  });
+  repoIn.addEventListener('keydown', (e) => {
+    const navIdxs = currentItems
+      .map((it, i) => (it.kind === 'recent' || it.kind === 'mine') ? i : -1)
+      .filter((i) => i >= 0);
+    if (e.key === 'ArrowDown' && navIdxs.length) {
+      e.preventDefault();
+      if (listEl.hidden) { renderList(); }
+      const cur = navIdxs.indexOf(highlightIdx);
+      highlightIdx = navIdxs[(cur + 1) % navIdxs.length];
+      renderList();
+      scrollHighlightIntoView();
+    } else if (e.key === 'ArrowUp' && navIdxs.length) {
+      e.preventDefault();
+      const cur = navIdxs.indexOf(highlightIdx);
+      highlightIdx = navIdxs[cur <= 0 ? navIdxs.length - 1 : cur - 1];
+      renderList();
+      scrollHighlightIntoView();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightIdx >= 0) pickItem(highlightIdx);
+      else if (!okBtn.disabled) submit();
+    } else if (e.key === 'Tab') {
+      listEl.hidden = true;
+    }
+  });
+
+  const scrollHighlightIntoView = () => {
+    const active = listEl.querySelector('.gh-combo__item.is-active');
+    if (active) active.scrollIntoView({ block: 'nearest' });
+  };
+
+  tokenIn.addEventListener('input', () => {
+    const v = tokenIn.value.trim();
+    if (v && v !== activeToken) {
+      myRepos = null; myReposError = null; activeToken = null;
+      if (document.activeElement === repoIn) renderList();
+    }
+  });
+
   const submit = async () => {
     const parsed = parseRepoInput(repoIn.value);
     if (!parsed) {
-      statusEl.textContent = 'Zadejte owner/repo nebo URL.';
+      statusEl.textContent = 'Zadejte owner/repo nebo URL, nebo vyberte ze seznamu.';
       statusEl.dataset.kind = 'err';
       repoIn.focus();
       return;
     }
     const spec = { ...parsed };
     const br = branchIn.value.trim();
-    const tk = tokenIn.value.trim();
+    const tk = tokenIn.value.trim() || tokenForFetch();
     if (br) spec.branch = br;
     if (tk) spec.token = tk;
 
@@ -1063,7 +1256,20 @@ function showGithubDialog() {
     }
   };
   okBtn.addEventListener('click', submit);
-  setTimeout(() => repoIn.focus(), 0);
+
+  // bootstrap: nedávné GH repa z historie
+  idbGetRecent().then((list) => {
+    const ghs = list.filter((e) => e.type === 'github' && e.data?.owner && e.data?.repo);
+    recentEntries = ghs.map((e) => ({
+      owner: e.data.owner,
+      repo: e.data.repo,
+      branch: e.data.branch || '',
+      token: e.data.token || '',
+    }));
+    if (document.activeElement === repoIn) renderList();
+  }).catch(() => {});
+
+  setTimeout(() => { repoIn.focus(); renderList(); }, 0);
 }
 
 // --- Branch picker ----------------------------------------------------------

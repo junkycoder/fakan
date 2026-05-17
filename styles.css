@@ -1037,6 +1037,75 @@ button {
 }
 .gh-dialog__btn--primary:hover:not(:disabled) { filter: brightness(0.95); }
 
+.gh-combo {
+  position: relative;
+}
+.gh-combo__list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  z-index: 60;
+  padding: 4px 0;
+}
+.gh-combo__header {
+  padding: 6px 10px 4px;
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.gh-combo__status {
+  padding: 2px 10px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.gh-combo__item {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  text-align: left;
+}
+.gh-combo__item:hover,
+.gh-combo__item.is-active {
+  background: color-mix(in oklab, var(--c-yellow) 14%, transparent);
+}
+.gh-combo__icon {
+  width: 14px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.gh-combo__label {
+  flex: 0 1 auto;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-combo__sub {
+  flex: 1 1 auto;
+  font-size: 11px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
 .gh-branches {
   max-height: 50vh;
   overflow: auto;
