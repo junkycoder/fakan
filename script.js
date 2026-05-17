@@ -633,6 +633,7 @@ const previewPanels = new Map(); // path → panel
 let activePanel = null;          // okno s yellow headerem
 let followerPanel = null;        // náhled, který sleduje šipkový focus
 let lastFollowerStyles = null;   // pozice/velikost zachovaná mezi instancemi followera
+let lastPanelPos = null;         // {left, top} v px posledního umístěného/přesunutého panelu
 let panelZ = 100;
 let panelNavListener = null;     // callback do nav re-renderu (taby)
 let routeNavListener = null;     // callback do nav re-renderu (home / .. / historie)
@@ -917,16 +918,27 @@ function createPanel(node, variant) {
   return panel;
 }
 
+const PANEL_CASCADE = 28; // offset dalšího panelu od poslední pozice
+
 function positionPanel(panel) {
   const el = panel.element;
-  if (panel.variant === 'main') {
+  if (lastPanelPos) {
+    el.style.left = `${lastPanelPos.left + PANEL_CASCADE}px`;
+    el.style.top = `${lastPanelPos.top + PANEL_CASCADE}px`;
+  } else if (panel.variant === 'main') {
     el.style.left = '16px';
     el.style.top = `calc(16px + var(--safe-t))`;
   } else {
-    const stack = previewPanels.size;
-    el.style.left = `${24 + stack * 28}px`;
-    el.style.top = `calc(${24 + stack * 28}px + var(--safe-t))`;
+    el.style.left = '24px';
+    el.style.top = `calc(24px + var(--safe-t))`;
   }
+  // zapamatuj si pozici jako baseline pro další panel (po layoutu, ať máme px)
+  requestAnimationFrame(() => rememberPanelPos(el));
+}
+
+function rememberPanelPos(el) {
+  const rect = el.getBoundingClientRect();
+  lastPanelPos = { left: rect.left, top: rect.top };
 }
 
 // --- editor mount / persist -------------------------------------------------
@@ -1089,6 +1101,7 @@ function setupPanelInteractions(panel) {
     dragging = false;
     head.classList.remove('is-dragging');
     try { head.releasePointerCapture(e.pointerId); } catch {}
+    rememberPanelPos(el);
   };
   head.addEventListener('pointerup', endDrag);
   head.addEventListener('pointercancel', endDrag);
@@ -1249,6 +1262,8 @@ function closePanel(panel) {
   if (panel === mainPanel) mainPanel = null;
   else previewPanels.delete(panel.path);
   if (panel === followerPanel) followerPanel = null;
+  // poslední zavřené okno = reset kaskády (další otevření zase v rohu)
+  if (!mainPanel && previewPanels.size === 0) lastPanelPos = null;
   if (activePanel === panel) {
     activePanel = null;
     // aktivuj nejvyšší zbylý
