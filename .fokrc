@@ -15,3 +15,6 @@ CLAUDE.md
 
 # generátor stromu (CLI nástroj, ne obsah)
 bin
+
+# third-party knihovny
+vendor

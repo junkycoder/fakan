@@ -6,7 +6,7 @@ import {
   state,
   FALLBACK_PATTERNS, IDB_NAME, IDB_STORE, IDB_KEY,
   IDB_KEY_SNAPSHOT, IDB_KEY_GH, IDB_KEY_RECENT, RECENT_CAP,
-  STRIPE_TIP_URL, WAITLIST_ENDPOINT, HOSTED_PRICE_CZK,
+  TIP_ACCOUNT, TIP_BANK, TIP_IBAN, WAITLIST_ENDPOINT, HOSTED_PRICE_CZK,
   RESERVED_SUBDOMAINS, EMAIL_RE, SUBDOMAIN_RE,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
 } from './state.js';
@@ -1267,8 +1267,86 @@ export function mountBadge() {
   `;
   wrap.removeAttribute('hidden');
   wrap.querySelector('[data-badge-want]').addEventListener('click', () => showWizard());
-  wrap.querySelector('[data-badge-tip]').addEventListener('click', () => {
-    window.open(STRIPE_TIP_URL, '_blank', 'noopener');
+  wrap.querySelector('[data-badge-tip]').addEventListener('click', () => showTipDialog());
+}
+
+// --- Tip dialog (QR Platba) -------------------------------------------------
+
+function showTipDialog() {
+  // zavři případnou existující instanci
+  document.querySelector('[data-tip-dialog]')?.remove();
+
+  const accountDisplay = `${TIP_ACCOUNT}/${TIP_BANK}`;
+  // IBAN naformátovaný do skupin po 4 znacích pro čitelnost
+  const ibanPretty = TIP_IBAN.replace(/(.{4})/g, '$1 ').trim();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'tip-dialog';
+  wrap.setAttribute('data-tip-dialog', '');
+  wrap.innerHTML = `
+    <div class="tip-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="tip-title">
+      <h2 class="tip-dialog__title" id="tip-title">Děkujeme, že přemýšlíte přispět</h2>
+      <p class="tip-dialog__intro">Načtěte QR kód v bankovní aplikaci, nebo zkopírujte číslo účtu.</p>
+      <div class="tip-dialog__qr" data-tip-qr aria-hidden="true"></div>
+      <div class="tip-dialog__account">
+        <span class="tip-dialog__account-num" data-tip-account>${accountDisplay}</span>
+        <button type="button" class="tip-dialog__btn tip-dialog__btn--copy" data-tip-copy>Zkopírovat</button>
+      </div>
+      <div class="tip-dialog__iban">IBAN: ${ibanPretty}</div>
+      <div class="tip-dialog__buttons">
+        <button type="button" class="tip-dialog__btn" data-tip-close>Zavřít</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  // Vykreslit QR (SPAYD — Short Payment Descriptor, CZ standard).
+  const qrEl = wrap.querySelector('[data-tip-qr]');
+  try {
+    // typeNumber=0 → auto-fit; error correction 'M' → ~15 % redundance
+    const qr = window.qrcode(0, 'M');
+    qr.addData(`SPD*1.0*ACC:${TIP_IBAN}*CC:CZK*MSG:fakan.cz tip`);
+    qr.make();
+    // cellSize=5, margin=2 → cca 165×165 px pro typickou velikost
+    qrEl.innerHTML = qr.createSvgTag(5, 2);
+  } catch (err) {
+    console.error('QR render failed', err);
+    qrEl.textContent = '(QR se nepodařilo vykreslit)';
+  }
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelector('[data-tip-close]').addEventListener('click', close);
+
+  const copyBtn = wrap.querySelector('[data-tip-copy]');
+  const accountSpan = wrap.querySelector('[data-tip-account]');
+  copyBtn.addEventListener('click', async () => {
+    const orig = copyBtn.textContent;
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(accountDisplay);
+      ok = true;
+    } catch {
+      // fallback: vyber text v <span> aby ho šlo Cmd/Ctrl+C
+      const range = document.createRange();
+      range.selectNodeContents(accountSpan);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    copyBtn.textContent = ok ? 'Zkopírováno' : 'Vyberte a Cmd+C';
+    copyBtn.disabled = true;
+    setTimeout(() => {
+      copyBtn.textContent = orig;
+      copyBtn.disabled = false;
+    }, 1800);
   });
 }
 

@@ -78,7 +78,10 @@ export const IDB_KEY_GH = 'githubSpec';
 export const IDB_KEY_RECENT = 'recentSources';
 export const RECENT_CAP = 8;
 
-export const STRIPE_TIP_URL = 'https://donate.stripe.com/PLACEHOLDER';
+// Bankovní spojení pro „Přispět" dialog. IBAN spočítaný offline (mod-97).
+export const TIP_ACCOUNT = '1060795014';
+export const TIP_BANK = '3030';
+export const TIP_IBAN = 'CZ1530300000001060795014';
 export const WAITLIST_ENDPOINT = '/waitlist';
 export const HOSTED_PRICE_CZK = 99;
 
