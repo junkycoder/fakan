@@ -1456,12 +1456,15 @@ async function boot() {
   const handleHit = (e, mode) => {
     const el = e.target.closest('.hit');
     if (!el) return;
+    // hit button nesmí zůstat aktivní v DOM, jinak by Space na nej spustil click znova
+    el.blur();
     const path = el.dataset.path;
     const node = byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
     if (e.shiftKey) { openMainOnly(node); return; }
-    if (e.metaKey || e.ctrlKey) { openPreview(node); return; }
+    // Cmd/Ctrl+klik = follower preview (totéž okno jako Space — toggluje, sleduje focus)
+    if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
     if (mode === 'new') {
       if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
       openPreview(node);
