@@ -1256,7 +1256,7 @@ export function mountBadge() {
   if (!wrap) return;
   wrap.innerHTML = `
     <div class="badge__row">
-      <button type="button" class="badge__cta badge__cta--want" data-badge-want>Chci tohle taky →</button>
+      <button type="button" class="badge__cta badge__cta--want" data-badge-want>Já to chci taky</button>
       <button type="button" class="badge__cta badge__cta--tip" data-badge-tip>Přispět</button>
     </div>
     <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">Open source · AGPL-3.0</a>
