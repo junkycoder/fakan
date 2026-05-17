@@ -13,7 +13,7 @@ import {
   recenter, removeFromHistory,
   refreshOpenLabels, renderDirTree,
 } from './mindmap.js';
-import { syncUrl } from './url.js';
+import { syncFromState } from './url.js';
 
 // --- minimal markdown renderer ----------------------------------------------
 // Podmnožina: nadpisy, odstavce, **bold**, *italic*, `code`, ``` block ```,
@@ -634,7 +634,7 @@ export function openMain(node) {
   setupPanelInteractions(panel);
   bringToFront(panel.element);
   state.mainPanel = panel;
-  syncUrl(node.path || '');
+  syncFromState();
   if (state.panelNavListener) state.panelNavListener();
   setActive(panel);
   refreshOpenLabels();
@@ -737,7 +737,7 @@ export function closePanel(panel) {
   panel.element.remove();
   if (panel === state.mainPanel) {
     state.mainPanel = null;
-    syncUrl('');
+    syncFromState();
   } else state.previewPanels.delete(panel.path);
   if (panel === state.followerPanel) state.followerPanel = null;
   // poslední zavřené okno = reset kaskády (další otevření zase v rohu)

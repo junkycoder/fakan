@@ -1,39 +1,78 @@
-// URL sync — pathname zrcadlí aktivní soubor v main panelu.
-// Žádný hash, žádný query. SPA fallback řeší _redirects pro CF Pages.
+// URL sync — pathname zrcadlí stav aplikace.
+//
+// Pravidla:
+//   • main panel je otevřený → URL = cesta toho souboru (např. /about/zaruka.md)
+//   • main zavřený, recenter na dir → URL = cesta dir + trailing slash (/projects/)
+//   • home, nic → /
+//
+// Změny stavu (klik na file, recenter, close panelu) → history.pushState,
+// aby Back/Forward nativně přeskakoval mezi stavy. Identická URL = bez entry.
+//
+// Edge case: pokud je main panel mimo recenter subtree (uživatel recenter na
+// `about`, ale main drží `projects/foo.md`), URL ukáže main (full path) — to
+// stačí pro reload, recenter v tomto případě URL nezmění.
 
 import { state } from './state.js';
-import { recenter, focusNode } from './mindmap.js';
 
-// '' → '/', 'about/zaruka.md' → '/about/zaruka.md'
-// encodeURI nezakóduje '/', zakóduje diakritiku a mezery (browser je v address baru
-// zase dekóduje na čitelnou podobu).
+// 'about/zaruka.md' → '/about/zaruka.md', '' → '/'. Trailing '/' přidá volající
+// pro dir-only URL.
 export function pathToUrl(path) {
   if (!path) return '/';
   return '/' + path.split('/').map(encodeURIComponent).join('/');
 }
 
-// '/' → '', '/about/zaruka.md' → 'about/zaruka.md'
-export function urlToPath() {
+// Vypočítá URL z (rootPath, mainPath). Trailing slash = dir-only stav.
+export function computeUrl(rootPath, mainPath) {
+  if (mainPath) return pathToUrl(mainPath);
+  if (rootPath) return pathToUrl(rootPath) + '/';
+  return '/';
+}
+
+// Parsuje location.pathname → { path, isDir }
+//   '/' → { path: '', isDir: false }
+//   '/projects/' → { path: 'projects', isDir: true }
+//   '/about/zaruka.md' → { path: 'about/zaruka.md', isDir: false }
+export function parseUrl() {
   const raw = window.location.pathname || '/';
-  if (raw === '/' || raw === '') return '';
+  if (raw === '/' || raw === '') return { path: '', isDir: false };
+  const isDir = raw.endsWith('/') && raw.length > 1;
   const stripped = raw.replace(/^\/+/, '').replace(/\/+$/, '');
   try {
-    return stripped.split('/').map(decodeURIComponent).join('/');
+    const path = stripped.split('/').map(decodeURIComponent).join('/');
+    return { path, isDir };
   } catch {
-    return '';
+    return { path: '', isDir: false };
   }
 }
 
-// replaceState bez zbytečného přepisu (vyhne se duplikátním entries i v případě
-// že někdy refaktorujeme na pushState).
-export function syncUrl(path) {
-  const next = pathToUrl(path);
-  if (window.location.pathname === next) return;
+// Pushne nový stav do history. No-op pokud URL je identická.
+export function pushUrl(rootPath, mainPath) {
+  const next = computeUrl(rootPath, mainPath);
+  const current = window.location.pathname;
+  if (current === next) return;
+  try {
+    window.history.pushState(null, '', next);
+  } catch {}
+}
+
+// replaceState — pro init z URL (nahradí null entry před uživatelovou
+// navigací), nebo pro tichou opravu.
+export function replaceUrl(rootPath, mainPath) {
+  const next = computeUrl(rootPath, mainPath);
+  const current = window.location.pathname;
+  if (current === next) return;
   try {
     window.history.replaceState(null, '', next);
-  } catch {
-    // file:// nebo jiný kontext bez history API — ignoruj
-  }
+  } catch {}
+}
+
+// Pohodlný wrapper: čte rootPath/mainPath ze state, sám se rozhodne push/replace.
+// Default = push (uživatelská akce). Pass `{ replace: true }` pro init.
+export function syncFromState({ replace = false } = {}) {
+  const rootPath = state.currentRootPath || '';
+  const mainPath = state.mainPanel?.path || '';
+  if (replace) replaceUrl(rootPath, mainPath);
+  else pushUrl(rootPath, mainPath);
 }
 
 // Hledání nodu v plném stromu (state.byPath obsahuje jen aktuální podstrom).
@@ -42,7 +81,6 @@ export function syncUrl(path) {
 // `filename || name`, pro dir z `name`. Root (top-level volání) má prefix=''.
 export function findNodeByPath(tree, path, prefix = null) {
   if (!tree) return null;
-  // prefix === null = vrchol stromu (root) — sám se v path nepromítne
   let here;
   if (prefix === null) {
     here = '';
@@ -51,7 +89,6 @@ export function findNodeByPath(tree, path, prefix = null) {
     here = prefix ? `${prefix}/${seg}` : seg;
   }
   if (here === path) return tree;
-  // brzká zkratka — pokud path nezačíná aktuální cestou (a nejsme na rootu), nemá smysl pokračovat
   if (here && path && !path.startsWith(here + '/')) return null;
   const kids = tree.children || [];
   for (const child of kids) {
