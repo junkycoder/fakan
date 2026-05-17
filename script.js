@@ -1785,9 +1785,206 @@ async function idbClearHandle() {
   } catch {}
 }
 
+const IDB_KEY_GH = 'githubSpec';
+
+async function idbSetGithubSpec(spec) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(spec, IDB_KEY_GH);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { console.warn('idb gh persist failed', e); }
+}
+
+async function idbGetGithubSpec() {
+  try {
+    const db = await idbOpen();
+    const spec = await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY_GH);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return spec || null;
+  } catch { return null; }
+}
+
+async function idbClearGithubSpec() {
+  try {
+    const db = await idbOpen();
+    await new Promise((res) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY_GH);
+      tx.oncomplete = res;
+    });
+    db.close();
+  } catch {}
+}
+
+// --- GitHub jako zdroj ------------------------------------------------------
+// Tree přes Git Trees API jedním requestem (recursive=1). Text souborů:
+// public přes raw.githubusercontent.com (mimo rate-limit), privátní přes
+// /contents s tokenem. Read-only — editor stejně ukládá edits do localStorage
+// overlay (saveEditOverride), takže write-back API nepotřebujeme.
+
+function parseRepoInput(raw) {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!t) return null;
+  const url = t.match(/^https?:\/\/github\.com\/([^/\s]+)\/([^/\s?#]+?)(?:\.git)?(?:\/tree\/([^/\s?#]+))?\/?(?:[?#].*)?$/);
+  if (url) return { owner: url[1], repo: url[2], branch: url[3] || '' };
+  const slug = t.match(/^([^/\s]+)\/([^/\s]+?)(?:\.git)?$/);
+  if (slug) return { owner: slug[1], repo: slug[2], branch: '' };
+  return null;
+}
+
+function ghAuthHeaders(spec) {
+  return spec.token ? { Authorization: `Bearer ${spec.token}` } : {};
+}
+
+async function ghApi(spec, path) {
+  const r = await fetch(`https://api.github.com${path}`, {
+    headers: { Accept: 'application/vnd.github+json', ...ghAuthHeaders(spec) },
+  });
+  if (!r.ok) {
+    const msg = r.status === 404 ? 'repo nenalezen nebo bez přístupu'
+      : r.status === 401 ? 'token neplatný'
+      : r.status === 403 ? 'GitHub odmítl (rate limit nebo přístup)'
+      : `GitHub ${r.status}`;
+    throw new Error(msg);
+  }
+  return r.json();
+}
+
+async function ghFetchText(spec, filePath) {
+  const segs = filePath.split('/').map(encodeURIComponent).join('/');
+  if (spec.token) {
+    const r = await fetch(`https://api.github.com/repos/${spec.owner}/${spec.repo}/contents/${segs}?ref=${encodeURIComponent(spec.branch)}`, {
+      headers: { Accept: 'application/vnd.github.raw', ...ghAuthHeaders(spec) },
+    });
+    if (!r.ok) throw new Error(`gh contents ${r.status}`);
+    return r.text();
+  }
+  const r = await fetch(`https://raw.githubusercontent.com/${spec.owner}/${spec.repo}/${encodeURIComponent(spec.branch)}/${segs}`);
+  if (!r.ok) throw new Error(`raw ${r.status}`);
+  return r.text();
+}
+
+async function pLimitAll(thunks, concurrency = 8) {
+  let i = 0;
+  const n = thunks.length;
+  const workers = Array(Math.min(concurrency, n) || 1).fill(0).map(async () => {
+    while (i < n) {
+      const idx = i++;
+      try { await thunks[idx](); } catch {}
+    }
+  });
+  await Promise.all(workers);
+}
+
+async function loadFromGithub(spec, onStatus) {
+  const note = (m) => { if (onStatus) onStatus(m); };
+  if (!spec.branch) {
+    note('zjišťuju default branch…');
+    const repo = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}`);
+    spec.branch = repo.default_branch || 'main';
+  }
+  let patterns = FALLBACK_PATTERNS;
+  try { patterns = loadFokrcPatterns(await ghFetchText(spec, '.fokrc')); } catch {}
+
+  note('načítám strom…');
+  const data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
+  if (data.truncated) console.warn('GitHub tree truncated — některé soubory chybí');
+
+  const root = { name: spec.repo, type: 'dir', children: [] };
+  const dirIndex = new Map([['', root]]);
+  const ensureDir = (dirPath) => {
+    if (dirIndex.has(dirPath)) return dirIndex.get(dirPath);
+    const parts = dirPath.split('/');
+    const name = parts[parts.length - 1];
+    const parentPath = parts.slice(0, -1).join('/');
+    const parent = ensureDir(parentPath);
+    if (!parent) return null;
+    const node = { name, type: 'dir', children: [] };
+    parent.children.push(node);
+    dirIndex.set(dirPath, node);
+    return node;
+  };
+  const isPathHidden = (p) => p.split('/').some((s) => isHidden(s, patterns));
+  const depthOf = (p) => p === '' ? 0 : p.split('/').length;
+  const MAX_DEPTH = 4;
+
+  const entries = (data.tree || []).slice().sort((a, b) => a.path.localeCompare(b.path));
+  const filePromises = [];
+  for (const e of entries) {
+    if (!e.path) continue;
+    if (depthOf(e.path) > MAX_DEPTH) continue;
+    if (isPathHidden(e.path)) continue;
+    if (e.type === 'tree') {
+      ensureDir(e.path);
+    } else if (e.type === 'blob') {
+      const parts = e.path.split('/');
+      const name = parts[parts.length - 1];
+      const parentPath = parts.slice(0, -1).join('/');
+      const parent = ensureDir(parentPath);
+      if (!parent) continue;
+      const [stem, ext] = splitExt(name);
+      const isMd = ext === '.md';
+      const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+      const node = {
+        name, type: 'file',
+        kind: isMd ? 'md' : (isText ? 'text' : 'other'),
+        filename: name,
+      };
+      parent.children.push(node);
+      if (isText) {
+        const blobPath = e.path;
+        filePromises.push(async () => {
+          try {
+            const text = await ghFetchText(spec, blobPath);
+            if (isMd) {
+              const [fm, body] = parseFrontmatter(text);
+              node.slug = fm.slug || stem;
+              node.title = fm.title || '';
+              node.content = body;
+              node.raw = text;
+            } else {
+              node.content = text;
+              node.raw = text;
+            }
+          } catch (err) { console.warn('gh fetch failed', blobPath, err); }
+        });
+      }
+    }
+  }
+
+  // pořadí: dirs nahoru, soubory dolů, abecedně — stejné jako walkHandle()
+  const sortChildren = (n) => {
+    if (!n.children) return;
+    n.children.sort((a, b) => {
+      const af = a.type === 'file' ? 1 : 0;
+      const bf = b.type === 'file' ? 1 : 0;
+      if (af !== bf) return af - bf;
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+    for (const c of n.children) sortChildren(c);
+  };
+  sortChildren(root);
+
+  note(`stahuji obsah (${filePromises.length})…`);
+  await pLimitAll(filePromises, 8);
+  return root;
+}
+
 // --- zdroj: mount / unmount / restore --------------------------------------
 
 let rootHandle = null;
+let githubSpec = null;
 
 function showEmptyState() {
   const overlay = document.getElementById('empty-state');
@@ -1882,6 +2079,7 @@ async function loadAndMount(handle, opts = {}) {
   try {
     const tree = await loadFromHandle(handle);
     rootHandle = handle;
+    githubSpec = null;
     originalTree = tree;
     currentRootPath = '';
     recenterHistory = [];
@@ -1889,15 +2087,32 @@ async function loadAndMount(handle, opts = {}) {
     rebuildMindmap('');
     renderSourceMenu();
     if (opts.persist !== false) await idbSetHandle(handle);
+    await idbClearGithubSpec();
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
   }
 }
 
+async function connectGithub(spec, onStatus) {
+  const tree = await loadFromGithub(spec, onStatus);
+  rootHandle = null;
+  githubSpec = spec;
+  originalTree = tree;
+  currentRootPath = '';
+  recenterHistory = [];
+  hideEmptyState();
+  rebuildMindmap('');
+  renderSourceMenu();
+  await idbSetGithubSpec(spec);
+  await idbClearHandle();
+}
+
 async function disconnectSource() {
   await idbClearHandle();
+  await idbClearGithubSpec();
   rootHandle = null;
+  githubSpec = null;
   originalTree = null;
   currentRootPath = '';
   recenterHistory = [];
@@ -1940,23 +2155,128 @@ async function tryRestoreSource() {
   }
 }
 
+async function tryRestoreGithub() {
+  const spec = await idbGetGithubSpec();
+  if (!spec || !spec.owner || !spec.repo) return false;
+  try {
+    await connectGithub({ ...spec });
+    return true;
+  } catch (e) {
+    console.warn('restore github failed', e);
+    return false;
+  }
+}
+
+// --- GitHub dialog ----------------------------------------------------------
+
+function showGithubDialog() {
+  // zavři případnou existující instanci
+  document.querySelector('[data-gh-dialog]')?.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'gh-dialog';
+  wrap.setAttribute('data-gh-dialog', '');
+  wrap.innerHTML = `
+    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Připojit GitHub repo">
+      <h2 class="gh-dialog__title">Připojit GitHub repo</h2>
+      <label class="gh-dialog__field">
+        <span>Repo</span>
+        <input type="text" data-gh-repo placeholder="owner/repo nebo https://github.com/owner/repo" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="gh-dialog__field">
+        <span>Větev <em>(volitelně)</em></span>
+        <input type="text" data-gh-branch placeholder="default branch" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      </label>
+      <label class="gh-dialog__field">
+        <span>Token <em>(volitelně, pro privátní repo)</em></span>
+        <input type="password" data-gh-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="gh-dialog__hint">Token zůstane jen lokálně v IndexedDB tohohle prohlížeče. Bez tokenu lze připojit jen veřejný repo.</p>
+      <div class="gh-dialog__status" data-gh-status></div>
+      <div class="gh-dialog__buttons">
+        <button type="button" class="gh-dialog__btn" data-gh-cancel>Zrušit</button>
+        <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-gh-ok>Připojit</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const repoIn = wrap.querySelector('[data-gh-repo]');
+  const branchIn = wrap.querySelector('[data-gh-branch]');
+  const tokenIn = wrap.querySelector('[data-gh-token]');
+  const okBtn = wrap.querySelector('[data-gh-ok]');
+  const cancelBtn = wrap.querySelector('[data-gh-cancel]');
+  const statusEl = wrap.querySelector('[data-gh-status]');
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+    if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); submit(); }
+  };
+  document.addEventListener('keydown', onKey);
+  cancelBtn.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+
+  const submit = async () => {
+    const parsed = parseRepoInput(repoIn.value);
+    if (!parsed) {
+      statusEl.textContent = 'Zadejte owner/repo nebo URL.';
+      statusEl.dataset.kind = 'err';
+      repoIn.focus();
+      return;
+    }
+    const spec = { ...parsed };
+    const br = branchIn.value.trim();
+    const tk = tokenIn.value.trim();
+    if (br) spec.branch = br;
+    if (tk) spec.token = tk;
+
+    okBtn.disabled = true;
+    cancelBtn.disabled = true;
+    statusEl.dataset.kind = 'info';
+    statusEl.textContent = 'Připojuju…';
+    try {
+      await connectGithub(spec, (m) => { statusEl.textContent = m; });
+      close();
+    } catch (err) {
+      console.error(err);
+      statusEl.dataset.kind = 'err';
+      statusEl.textContent = `Chyba: ${err.message}`;
+      okBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  };
+  okBtn.addEventListener('click', submit);
+  setTimeout(() => repoIn.focus(), 0);
+}
+
 // --- zdrojové menu v navu ---------------------------------------------------
 
 function renderSourceMenu() {
   const label = document.querySelector('[data-source-label]');
   const menu = document.querySelector('[data-source-menu]');
-  if (label) label.textContent = rootHandle ? rootHandle.name : 'Zdroj';
+  const labelText = rootHandle ? rootHandle.name
+    : githubSpec ? `${githubSpec.owner}/${githubSpec.repo}`
+    : 'Zdroj';
+  if (label) label.textContent = labelText;
   if (!menu) return;
   menu.innerHTML = '';
 
+  const hasSource = !!(rootHandle || githubSpec);
   const items = [];
   items.push({
-    label: rootHandle ? 'Otevřít jinou složku…' : 'Otevřít složku…',
+    label: hasSource ? 'Otevřít jinou složku…' : 'Otevřít složku…',
     onClick: openDirectoryPicker,
   });
-  items.push({ label: 'Připojit GitHub repo…', disabled: true, title: 'Brzy' });
+  items.push({
+    label: githubSpec ? 'Připojit jiný GitHub repo…' : 'Připojit GitHub repo…',
+    onClick: showGithubDialog,
+  });
   items.push({ label: 'Export…', disabled: true, title: 'Brzy' });
-  if (rootHandle) {
+  if (hasSource) {
     items.push({ label: 'Odpojit zdroj', onClick: disconnectSource, danger: true });
   }
 
@@ -2032,8 +2352,12 @@ async function boot() {
   renderSourceMenu();
   renderEmptyHint(null);
   showEmptyState();
-  // pokus o restore z IndexedDB — pokud uspěje, schová empty hint sám
-  tryRestoreSource();
+  // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub.
+  // Pokud uspěje, schová empty hint sám.
+  (async () => {
+    if (await tryRestoreSource()) return;
+    await tryRestoreGithub();
+  })();
 }
 
 boot().catch((err) => {

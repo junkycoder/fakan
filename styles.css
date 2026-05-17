@@ -830,3 +830,93 @@ button {
   .nav__source-btn { max-width: 38vw; }
   .nav__home-btn { max-width: 32vw; }
 }
+
+/* --- GitHub dialog ------------------------------------------------------- */
+.gh-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.gh-dialog__panel {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 20px 22px;
+  width: min(440px, 100%);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+  font-family: var(--mono);
+}
+.gh-dialog__title {
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.gh-dialog__field {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.gh-dialog__field em { font-style: normal; opacity: 0.7; }
+.gh-dialog__field span { display: block; margin-bottom: 4px; }
+.gh-dialog__field input {
+  width: 100%;
+  font: inherit;
+  font-size: 13px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  outline: none;
+}
+.gh-dialog__field input:focus {
+  border-color: var(--c-yellow);
+  background: color-mix(in oklab, var(--c-yellow) 8%, transparent);
+}
+.gh-dialog__hint {
+  margin: 4px 0 12px;
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.gh-dialog__status {
+  min-height: 18px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.gh-dialog__status[data-kind="err"] { color: var(--c-red); }
+.gh-dialog__buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.gh-dialog__btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.gh-dialog__btn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+}
+.gh-dialog__btn:disabled { opacity: 0.5; cursor: default; }
+.gh-dialog__btn--primary {
+  background: var(--c-yellow);
+  color: #15151a;
+  border-color: var(--c-yellow);
+}
+.gh-dialog__btn--primary:hover:not(:disabled) { filter: brightness(0.95); }
