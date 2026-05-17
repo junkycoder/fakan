@@ -566,68 +566,6 @@ button {
   background: #fff;
 }
 
-/* --- panel footer (info + download/share) ---------------------------- */
-.panel__foot {
-  flex-shrink: 0;
-  border-top: 1px solid var(--line);
-  padding: 6px 10px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  min-height: 28px;
-  background: var(--bg);
-}
-.panel__foot:empty { display: none; }
-.panel__foot-info {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.panel__foot-link {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  color: var(--fg);
-  text-decoration: none;
-  padding: 2px 6px;
-  margin: -2px -6px;
-  border-radius: 4px;
-  width: 100%;
-  min-width: 0;
-}
-.panel__foot-link:hover {
-  background: color-mix(in oklab, var(--c-yellow) 22%, transparent);
-}
-.panel__foot-link:focus-visible {
-  outline: 1px solid var(--c-yellow);
-  outline-offset: 1px;
-}
-.panel__foot-link-name {
-  font-weight: 600;
-  color: var(--c-teal);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 1;
-  min-width: 0;
-}
-.panel__foot-link-meta {
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 1;
-  min-width: 0;
-}
-.panel__foot-link-act {
-  margin-left: auto;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.panel__foot-link:hover .panel__foot-link-act { color: var(--fg); }
-
 /* --- markdown content --- */
 .md { color: var(--fg); line-height: 1.5; }
 .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
