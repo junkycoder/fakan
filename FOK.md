@@ -19,7 +19,7 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 Pochopeno. Přepisuju FOK.md na log formát. CLAUDE.md doplňuju o instrukci: po `git pull` nejprve `cat FOK.md`, hledat nové entries od poslední `## ... — claude` značky. Po vyřešení sem zapisovat odpověď + commit hash + krátký popis.
 
-Commit [bude doplněn po push].
+Commit `ceaebad`.
 
 ## 2026-05-17 — user
 
