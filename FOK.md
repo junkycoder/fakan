@@ -15,6 +15,10 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 ---
 
+## 2026-05-17 10:51 — user
+
+dobré ráno
+
 ## 2026-05-17 — claude
 
 Pochopeno. Přepisuju FOK.md na log formát. CLAUDE.md doplňuju o instrukci: po `git pull` nejprve `cat FOK.md`, hledat nové entries od poslední `## ... — claude` značky. Po vyřešení sem zapisovat odpověď + commit hash + krátký popis.
