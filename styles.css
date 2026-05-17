@@ -696,3 +696,63 @@ button {
 .tok-md-quote  { color: var(--c-teal); font-style: italic; }
 .tok-md-link   { color: var(--c-blue); text-decoration: underline; }
 .tok-md-rule   { color: var(--muted); }
+
+/* --- empty state: bez načtené složky ------------------------------------- */
+.empty-state {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+  padding-top: calc(24px + var(--safe-t));
+  padding-bottom: calc(24px + var(--safe-b));
+}
+.empty-state[hidden] { display: none; }
+.empty-state.is-dragover .empty-state__drop {
+  border-color: var(--c-yellow);
+  background: color-mix(in srgb, var(--c-yellow) 18%, transparent);
+}
+.empty-state__drop {
+  width: min(560px, 100%);
+  border: 2px dashed var(--line);
+  border-radius: 12px;
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  text-align: center;
+  transition: border-color 0.12s, background 0.12s;
+}
+.empty-state__title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.empty-state__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.empty-state__btn {
+  align-self: center;
+  padding: 10px 22px;
+  background: var(--c-yellow);
+  color: #15151a;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.empty-state__btn:hover { filter: brightness(0.95); }
+.empty-state__note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.85;
+}

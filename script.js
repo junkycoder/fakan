@@ -5,7 +5,6 @@
 
 import { mountEditor } from './editor.js';
 
-const TREE_URL = './tree.json';
 const LS_EDIT_PREFIX = 'fakan:edit:';
 const CHAR_W = 8.4;
 const LINE_H = 18;
@@ -1605,39 +1604,233 @@ function setupKeyboard(_unused, vp) {
   });
 }
 
+// --- FS Access API: walk dropnuté / vybrané složky ---------------------------
+// Funguje v Chromu / Edge / Brave. Safari + Firefox zatím FS Access API nemají.
+
+const TEXT_EXTENSIONS = new Set([
+  '.md', '.html', '.css', '.js', '.json', '.txt', '.sh', '.py',
+  '.ts', '.tsx', '.yaml', '.yml', '.toml',
+]);
+const FALLBACK_PATTERNS = [{ pat: '.*', neg: false }, { pat: '__pycache__', neg: false }];
+
+function loadFokrcPatterns(text) {
+  const out = [];
+  for (const line of text.split('\n')) {
+    const t = line.trim();
+    if (!t || t.startsWith('#')) continue;
+    const neg = t.startsWith('!');
+    out.push({ pat: neg ? t.slice(1).trim() : t, neg });
+  }
+  return out.length ? out : FALLBACK_PATTERNS;
+}
+
+function globToRegex(pat) {
+  let s = '^';
+  for (const ch of pat) {
+    if (ch === '*') s += '.*';
+    else if (ch === '?') s += '.';
+    else if (/[.+^${}()|[\]\\]/.test(ch)) s += '\\' + ch;
+    else s += ch;
+  }
+  return new RegExp(s + '$');
+}
+
+function isHidden(name, patterns) {
+  let hidden = false;
+  for (const { pat, neg } of patterns) {
+    if (globToRegex(pat).test(name)) hidden = !neg;
+  }
+  return hidden;
+}
+
+function splitExt(name) {
+  const i = name.lastIndexOf('.');
+  if (i <= 0) return [name, ''];
+  return [name.slice(0, i), name.slice(i).toLowerCase()];
+}
+
+function parseFrontmatter(text) {
+  const m = text.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
+  if (!m) return [{}, text];
+  const fm = {};
+  for (const line of m[1].split('\n')) {
+    const t = line.trim();
+    if (!t || !t.includes(':')) continue;
+    const idx = t.indexOf(':');
+    const key = t.slice(0, idx).trim();
+    let val = t.slice(idx + 1).trim();
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    fm[key] = val;
+  }
+  return [fm, m[2].replace(/^\n+/, '')];
+}
+
+async function makeFileNode(handle) {
+  const name = handle.name;
+  const [stem, ext] = splitExt(name);
+  const isMd = ext === '.md';
+  const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+  const node = {
+    name,
+    type: 'file',
+    kind: isMd ? 'md' : (isText ? 'text' : 'other'),
+    filename: name,
+    _handle: handle,
+  };
+  if (isText) {
+    let text = '';
+    try { text = await (await handle.getFile()).text(); } catch {}
+    if (isMd) {
+      const [fm, body] = parseFrontmatter(text);
+      node.slug = fm.slug || stem;
+      node.title = fm.title || '';
+      node.content = body;
+      node.raw = text;
+    } else {
+      node.content = text;
+      node.raw = text;
+    }
+  }
+  return node;
+}
+
+async function walkHandle(dirHandle, patterns, depth = 0, maxDepth = 4) {
+  const node = { name: dirHandle.name, type: 'dir', children: [], _handle: dirHandle };
+  if (depth >= maxDepth) return node;
+  const entries = [];
+  for await (const [name, h] of dirHandle.entries()) entries.push([name, h]);
+  entries.sort(([an, ah], [bn, bh]) => {
+    const aIsFile = ah.kind === 'file' ? 1 : 0;
+    const bIsFile = bh.kind === 'file' ? 1 : 0;
+    if (aIsFile !== bIsFile) return aIsFile - bIsFile;
+    return an.toLowerCase().localeCompare(bn.toLowerCase());
+  });
+  for (const [name, h] of entries) {
+    if (isHidden(name, patterns)) continue;
+    if (h.kind === 'directory') {
+      node.children.push(await walkHandle(h, patterns, depth + 1, maxDepth));
+    } else {
+      node.children.push(await makeFileNode(h));
+    }
+  }
+  return node;
+}
+
+async function loadFromHandle(handle) {
+  let patterns = FALLBACK_PATTERNS;
+  try {
+    const fokrc = await handle.getFileHandle('.fokrc');
+    patterns = loadFokrcPatterns(await (await fokrc.getFile()).text());
+  } catch {}
+  const tree = await walkHandle(handle, patterns);
+  tree.name = handle.name || '~';
+  return tree;
+}
+
+// --- empty state + drop / pick ----------------------------------------------
+
+let rootHandle = null;
+
+function showEmptyState() {
+  const overlay = document.getElementById('empty-state');
+  if (overlay) overlay.hidden = false;
+}
+
+function hideEmptyState() {
+  const overlay = document.getElementById('empty-state');
+  if (overlay) overlay.hidden = true;
+}
+
+function setupEmptyState() {
+  const overlay = document.getElementById('empty-state');
+  if (!overlay) return;
+  const btn = overlay.querySelector('[data-empty-pick]');
+  if (btn) btn.addEventListener('click', openDirectoryPicker);
+
+  // drag-drop kdekoli na okně — overlay vizuálně podsvítí, drop se akceptuje vždy
+  const hasFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  const onDragOver = (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    overlay.classList.add('is-dragover');
+  };
+  const onDragLeave = (e) => {
+    if (e.relatedTarget == null) overlay.classList.remove('is-dragover');
+  };
+  const onDrop = async (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    overlay.classList.remove('is-dragover');
+    const item = e.dataTransfer.items?.[0];
+    if (!item) return;
+    if (!item.getAsFileSystemHandle) {
+      alert('Drop složky vyžaduje Chrome / Edge / Brave (File System Access API).');
+      return;
+    }
+    let handle;
+    try { handle = await item.getAsFileSystemHandle(); }
+    catch (err) { console.error(err); return; }
+    if (handle.kind !== 'directory') {
+      alert('Pusťte sem celou složku, ne jeden soubor.');
+      return;
+    }
+    await loadAndMount(handle);
+  };
+  window.addEventListener('dragover', onDragOver);
+  window.addEventListener('dragleave', onDragLeave);
+  window.addEventListener('drop', onDrop);
+}
+
+async function openDirectoryPicker() {
+  if (!window.showDirectoryPicker) {
+    alert('Vyžaduje Chrome / Edge / Brave (File System Access API).');
+    return;
+  }
+  let handle;
+  try {
+    handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+  } catch (e) {
+    if (e.name !== 'AbortError') console.error(e);
+    return;
+  }
+  await loadAndMount(handle);
+}
+
+async function loadAndMount(handle) {
+  try {
+    const tree = await loadFromHandle(handle);
+    rootHandle = handle;
+    originalTree = tree;
+    currentRootPath = '';
+    recenterHistory = [];
+    hideEmptyState();
+    rebuildMindmap('');
+  } catch (err) {
+    console.error(err);
+    alert(`Načtení složky selhalo: ${err.message}`);
+  }
+}
+
 // --- boot --------------------------------------------------------------------
 
 async function boot() {
-  const res = await fetch(TREE_URL, { cache: 'no-cache' });
-  if (!res.ok) throw new Error(`tree.json: ${res.status}`);
-  const tree = await res.json();
-  originalTree = tree;
-  currentRootPath = '';
-
   const canvas = document.getElementById('canvas');
   const viewport = document.getElementById('viewport');
-  const map = document.getElementById('map');
-  const labels = document.getElementById('labels');
   const hits = document.getElementById('hits');
 
-  const grid = buildMindmap(tree, '');
-  treeNodes = grid.nodes;
-  buildTreeIndex(grid.nodes);
-  loadAllEditOverrides(grid.nodes);
-  currentBbox = paint(map, labels, hits, grid);
-  const rootNode = grid.nodes.find((n) => n.type === 'root');
-
+  // viewport — getView() je tolerantní na chybějící strom
   const vp = setupViewport(canvas, viewport, () => {
-    const root = byPath.get(currentRootPath) || rootNode;
+    const root = byPath.get(currentRootPath) || treeNodes.find((n) => n.type === 'root');
+    if (!root || !currentBbox) return null;
     return { bb: currentBbox, rootNode: root };
   });
   viewportApi = vp;
-  requestAnimationFrame(vp.center);
   window.addEventListener('resize', vp.center);
 
-  renderNav(grid, vp);
-  setupKeyboard(grid, vp);
-  if (rootNode) focusNode(rootNode);
+  renderNav(null, vp);
+  setupKeyboard(null, vp);
 
   // dblclick odešle nejdřív 1-2× click — single akci odložím, aby ji dblclick stihl zrušit
   let pendingSingle = null;
@@ -1669,10 +1862,13 @@ async function boot() {
   };
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
+
+  setupEmptyState();
+  showEmptyState();
 }
 
 boot().catch((err) => {
   console.error(err);
   const map = document.getElementById('map');
-  if (map) map.textContent = `chyba načítání: ${err.message}`;
+  if (map) map.textContent = `chyba: ${err.message}`;
 });

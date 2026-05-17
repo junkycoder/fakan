@@ -27,6 +27,15 @@
 
   <div class="panels" id="panels" aria-live="polite"></div>
 
+  <div class="empty-state" id="empty-state" data-empty-state>
+    <div class="empty-state__drop">
+      <h1 class="empty-state__title">fakan.cz</h1>
+      <p class="empty-state__hint">Pusťte sem složku, nebo klikněte a vyberte. Soubory zůstávají u vás — fakan jen renderuje strom toho, co mu předhodíte.</p>
+      <button class="empty-state__btn" type="button" data-empty-pick>Otevřít složku</button>
+      <p class="empty-state__note">Vyžaduje Chrome, Edge nebo Brave. Safari a Firefox zatím File System Access API nepodporují.</p>
+    </div>
+  </div>
+
   <script src="script.js" type="module"></script>
 </body>
 </html>
