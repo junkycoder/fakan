@@ -1660,6 +1660,95 @@ function isHidden(name, patterns) {
   return hidden;
 }
 
+// --- .gitignore parser ------------------------------------------------------
+// Podmnožina gitignore: # komentář, ! negace, koncové / = jen dir,
+// úvodní / nebo / uprostřed = anchored k umístění .gitignore,
+// * = [^/]*, ** = .* (cross-dir), ? = [^/]. Bez character classes a escape.
+
+function parseGitignoreLine(line) {
+  let pat = line.replace(/\r$/, '').replace(/\s+$/, '');
+  if (!pat || pat.startsWith('#')) return null;
+  let negate = false;
+  if (pat.startsWith('!')) { negate = true; pat = pat.slice(1); }
+  let dirOnly = false;
+  if (pat.endsWith('/')) { dirOnly = true; pat = pat.slice(0, -1); }
+  if (!pat) return null;
+  let anchored = false;
+  if (pat.startsWith('/')) { anchored = true; pat = pat.slice(1); }
+  else if (pat.includes('/') && !pat.startsWith('**/')) anchored = true;
+
+  let re = '';
+  let i = 0;
+  while (i < pat.length) {
+    const c = pat[i];
+    if (c === '*') {
+      if (pat[i + 1] === '*') {
+        re += '.*';
+        i += 2;
+        if (pat[i] === '/') { re += '/?'; i++; }
+      } else {
+        re += '[^/]*';
+        i++;
+      }
+    } else if (c === '?') {
+      re += '[^/]';
+      i++;
+    } else if (c === '/') {
+      re += '/';
+      i++;
+    } else if (/[.+^${}()|[\]\\]/.test(c)) {
+      re += '\\' + c;
+      i++;
+    } else {
+      re += c;
+      i++;
+    }
+  }
+
+  const prefix = anchored ? '^' : '(^|/)';
+  const suffix = '($|/)';
+  return { negate, dirOnly, regex: new RegExp(prefix + re + suffix) };
+}
+
+function parseGitignore(text) {
+  const rules = [];
+  for (const line of text.split('\n')) {
+    const r = parseGitignoreLine(line);
+    if (r) rules.push(r);
+  }
+  return rules;
+}
+
+// `entries` = pole { path, text }, path = cesta k .gitignore relativní
+// k rootu zdroje (bez root segmentu). Vrací list seřazený podle hloubky.
+function buildGitignoreIndex(entries) {
+  const out = [];
+  for (const { path, text } of entries) {
+    const dirPath = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+    out.push({ dirPath, rules: parseGitignore(text) });
+  }
+  out.sort((a, b) =>
+    (a.dirPath === '' ? 0 : a.dirPath.split('/').length) -
+    (b.dirPath === '' ? 0 : b.dirPath.split('/').length)
+  );
+  return out;
+}
+
+// Aplikuje pravidla od kořene k listům; hlubší .gitignore přepisuje povrchnější.
+function isGitignored(path, isDir, gitignores) {
+  let decision = false;
+  for (const gi of gitignores) {
+    if (gi.dirPath !== '' && path !== gi.dirPath && !path.startsWith(gi.dirPath + '/')) continue;
+    const rel = gi.dirPath === '' ? path : path.slice(gi.dirPath.length + 1);
+    if (!rel) continue;
+    for (const rule of gi.rules) {
+      if (rule.dirOnly && !isDir) continue;
+      if (rule.regex.test(rel)) decision = !rule.negate;
+    }
+  }
+  return decision;
+}
+
 function splitExt(name) {
   const i = name.lastIndexOf('.');
   if (i <= 0) return [name, ''];
@@ -1713,11 +1802,22 @@ async function makeFileNode(handle) {
   return node;
 }
 
-async function walkHandle(dirHandle, patterns, depth = 0, maxDepth = 4) {
+async function walkHandle(dirHandle, patterns, gitignores = [], currentPath = '', depth = 0, maxDepth = 4) {
   const node = { name: dirHandle.name, type: 'dir', children: [], _handle: dirHandle };
   if (depth >= maxDepth) return node;
   const entries = [];
   for await (const [name, h] of dirHandle.entries()) entries.push([name, h]);
+
+  // .gitignore v aktuálním adresáři rozšiří stack pro tento podstrom
+  let localGitignores = gitignores;
+  const giEntry = entries.find(([n, h]) => n === '.gitignore' && h.kind === 'file');
+  if (giEntry) {
+    try {
+      const text = await (await giEntry[1].getFile()).text();
+      localGitignores = gitignores.concat([{ dirPath: currentPath, rules: parseGitignore(text) }]);
+    } catch {}
+  }
+
   entries.sort(([an, ah], [bn, bh]) => {
     const aIsFile = ah.kind === 'file' ? 1 : 0;
     const bIsFile = bh.kind === 'file' ? 1 : 0;
@@ -1726,8 +1826,11 @@ async function walkHandle(dirHandle, patterns, depth = 0, maxDepth = 4) {
   });
   for (const [name, h] of entries) {
     if (isHidden(name, patterns)) continue;
-    if (h.kind === 'directory') {
-      node.children.push(await walkHandle(h, patterns, depth + 1, maxDepth));
+    const childPath = currentPath ? `${currentPath}/${name}` : name;
+    const isDir = h.kind === 'directory';
+    if (isGitignored(childPath, isDir, localGitignores)) continue;
+    if (isDir) {
+      node.children.push(await walkHandle(h, patterns, localGitignores, childPath, depth + 1, maxDepth));
     } else {
       node.children.push(await makeFileNode(h));
     }
@@ -1741,7 +1844,7 @@ async function loadFromHandle(handle) {
     const fokrc = await handle.getFileHandle('.fokrc');
     patterns = loadFokrcPatterns(await (await fokrc.getFile()).text());
   } catch {}
-  const tree = await walkHandle(handle, patterns);
+  const tree = await walkHandle(handle, patterns, [], '', 0);
   tree.name = handle.name || '~';
   return tree;
 }
@@ -1764,6 +1867,20 @@ async function loadFromFiles(files) {
     try { patterns = loadFokrcPatterns(await fokrc.text()); } catch {}
   }
 
+  // posbírat všechny .gitignore napříč zdrojem (vnořené i root)
+  const giFiles = arr.filter((f) => {
+    const rel = f.webkitRelativePath.split('/').slice(1).join('/');
+    return rel === '.gitignore' || rel.endsWith('/.gitignore');
+  });
+  const giEntries = [];
+  for (const f of giFiles) {
+    try {
+      const rel = f.webkitRelativePath.split('/').slice(1).join('/');
+      giEntries.push({ path: rel, text: await f.text() });
+    } catch {}
+  }
+  const gitignores = buildGitignoreIndex(giEntries);
+
   const root = { name: rootName, type: 'dir', children: [] };
   const dirIndex = new Map([['', root]]);
   const ensureDir = (dirPath) => {
@@ -1774,6 +1891,7 @@ async function loadFromFiles(files) {
     const parent = ensureDir(parentPath);
     if (!parent) return null;
     if (isHidden(name, patterns)) return null;
+    if (isGitignored(dirPath, true, gitignores)) return null;
     const node = { name, type: 'dir', children: [] };
     parent.children.push(node);
     dirIndex.set(dirPath, node);
@@ -1789,11 +1907,12 @@ async function loadFromFiles(files) {
     const dirSegs = rel.slice(0, -1);
     if (dirSegs.length + 1 > MAX_DEPTH) continue;
     if (rel.some((s) => isHidden(s, patterns))) continue;
+    if (isGitignored(rel.join('/'), false, gitignores)) continue;
     const parent = ensureDir(dirSegs.join('/'));
     if (!parent) continue;
     const [stem, ext] = splitExt(name);
     const isMd = ext === '.md';
-    const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+    const isText = isTextFile(name, ext);
     const node = {
       name, type: 'file',
       kind: isMd ? 'md' : (isText ? 'text' : 'other'),
@@ -2052,6 +2171,20 @@ async function loadFromGithub(spec, onStatus) {
   const data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
   if (data.truncated) console.warn('GitHub tree truncated — některé soubory chybí');
 
+  const depthOf = (p) => p === '' ? 0 : p.split('/').length;
+  const MAX_DEPTH = 4;
+
+  // posbírej a stáhni všechny .gitignore (root + vnořené, do MAX_DEPTH)
+  const giPaths = (data.tree || [])
+    .filter((e) => e.type === 'blob' && e.path && depthOf(e.path) <= MAX_DEPTH &&
+                   (e.path === '.gitignore' || e.path.endsWith('/.gitignore')))
+    .map((e) => e.path);
+  const giEntries = [];
+  await pLimitAll(giPaths.map((p) => async () => {
+    try { giEntries.push({ path: p, text: await ghFetchText(spec, p) }); } catch {}
+  }), 8);
+  const gitignores = buildGitignoreIndex(giEntries);
+
   const root = { name: spec.repo, type: 'dir', children: [] };
   const dirIndex = new Map([['', root]]);
   const ensureDir = (dirPath) => {
@@ -2067,8 +2200,6 @@ async function loadFromGithub(spec, onStatus) {
     return node;
   };
   const isPathHidden = (p) => p.split('/').some((s) => isHidden(s, patterns));
-  const depthOf = (p) => p === '' ? 0 : p.split('/').length;
-  const MAX_DEPTH = 4;
 
   const entries = (data.tree || []).slice().sort((a, b) => a.path.localeCompare(b.path));
   const filePromises = [];
@@ -2076,6 +2207,7 @@ async function loadFromGithub(spec, onStatus) {
     if (!e.path) continue;
     if (depthOf(e.path) > MAX_DEPTH) continue;
     if (isPathHidden(e.path)) continue;
+    if (isGitignored(e.path, e.type === 'tree', gitignores)) continue;
     if (e.type === 'tree') {
       ensureDir(e.path);
     } else if (e.type === 'blob') {
