@@ -597,6 +597,26 @@ function renderMarkdown(md) {
   return paras.replace(/ B(\d+) /g, (_, i) => blocks[Number(i)]);
 }
 
+// --- autoplay (per-soubor) --------------------------------------------------
+// Soubory v této množině se otevírají rovnou v rendered módu (iframe / md).
+// Persistuje se v localStorage, aby toggle přežil reload.
+const AUTOPLAY_KEY = 'fakan.autoplay';
+let autoplayPaths = new Set();
+try {
+  const raw = localStorage.getItem(AUTOPLAY_KEY);
+  if (raw) autoplayPaths = new Set(JSON.parse(raw));
+} catch {}
+
+function saveAutoplay() {
+  try { localStorage.setItem(AUTOPLAY_KEY, JSON.stringify([...autoplayPaths])); } catch {}
+}
+
+function toggleAutoplay(path) {
+  if (autoplayPaths.has(path)) autoplayPaths.delete(path);
+  else autoplayPaths.add(path);
+  saveAutoplay();
+}
+
 // --- okna (panely) ----------------------------------------------------------
 // Klik = jedno velké hlavní okno (replace).
 // Cmd/Ctrl+Klik = malý preview panel (additive).
@@ -744,16 +764,29 @@ function renderedBody(node) {
       .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
     return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
   }
+  // adresář s index.html: vyrenderuj jeho index.html
+  const idx = dirIndexHtml(node);
+  if (idx) {
+    const srcdoc = idx.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.name + '/index.html')}"></iframe>`;
+  }
   if (node.kind === 'md') {
     return `<p class="panel__note empty">Žádný obsah k vyrendrování.</p>`;
   }
   return sourceBody(node);
 }
 
+function dirIndexHtml(node) {
+  if (!node || node.type !== 'dir') return null;
+  const idx = byPath.get((node.path || '') + '/index.html');
+  return idx && idx.raw ? idx : null;
+}
+
 function canBuild(node) {
   if (node.kind === 'md' && node.content && node.content.trim()) return true;
   const fn = (node.filename || node.name || '').toLowerCase();
   if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return true;
+  if (dirIndexHtml(node)) return true;
   return false;
 }
 
@@ -769,16 +802,27 @@ function createPanel(node, variant) {
   el.dataset.path = path;
 
   const buildable = canBuild(node);
+  // Dir s index.html otevírám rovnou jako rendered (source pro dir nedává smysl).
+  // Pro soubory respektuju per-soubor autoplay flag.
+  const isAutoDir = node.type === 'dir' && !!dirIndexHtml(node);
+  const autoplay = buildable && (isAutoDir || autoplayPaths.has(path));
+  const initialMode = autoplay ? 'rendered' : 'source';
+  // Auto toggle ukazuju jen pro soubory — u dir je rendered defaultní.
+  const showAuto = buildable && node.type !== 'dir';
+  const autoOn = autoplayPaths.has(path);
+  const playLabel = initialMode === 'source' ? 'play' : 'src';
+  const playTitle = initialMode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
   el.innerHTML = `
     <header class="panel__head" data-panel-head>
       <span class="panel__path">${escapeHtml(pathLabel(node))}</span>
       <div class="panel__actions">
-        ${buildable ? '<button class="panel__btn panel__btn--play" type="button" data-panel-play title="Sestavit / náhled" aria-label="Sestavit">play</button>' : ''}
+        ${buildable ? `<button class="panel__btn panel__btn--play${initialMode === 'rendered' ? ' is-active' : ''}" type="button" data-panel-play title="${playTitle}" aria-label="Sestavit">${playLabel}</button>` : ''}
+        ${showAuto ? `<button class="panel__btn panel__btn--auto${autoOn ? ' is-active' : ''}" type="button" data-panel-auto title="Otevírat rovnou v náhledu" aria-label="Autoplay">auto</button>` : ''}
         <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
         <button class="panel__btn panel__btn--close" type="button" data-panel-close title="Zavřít" aria-label="Zavřít">×</button>
       </div>
     </header>
-    <div class="panel__body" data-panel-body>${sourceBody(node)}</div>
+    <div class="panel__body" data-panel-body>${initialMode === 'source' ? sourceBody(node) : renderedBody(node)}</div>
   `;
 
   const panel = {
@@ -786,7 +830,7 @@ function createPanel(node, variant) {
     node,
     path,
     variant,
-    mode: 'source',
+    mode: initialMode,
     isMax: false,
     savedStyles: null,
   };
@@ -809,11 +853,20 @@ function setupPanelInteractions(panel) {
   const el = panel.element;
   const head = el.querySelector('[data-panel-head]');
   const playBtn = el.querySelector('[data-panel-play]');
+  const autoBtn = el.querySelector('[data-panel-auto]');
   const maxBtn = el.querySelector('[data-panel-max]');
   const closeBtn = el.querySelector('[data-panel-close]');
   const bodyEl = el.querySelector('[data-panel-body]');
 
   closeBtn.addEventListener('click', () => closePanel(panel));
+
+  if (autoBtn) {
+    autoBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleAutoplay(panel.path);
+      autoBtn.classList.toggle('is-active', autoplayPaths.has(panel.path));
+    });
+  }
 
   if (playBtn) {
     playBtn.addEventListener('click', (e) => {
@@ -904,6 +957,16 @@ function toggleMax(panel) {
     panel.isMax = true;
     if (maxBtn) { maxBtn.textContent = '▭'; maxBtn.title = 'Obnovit'; }
   }
+}
+
+function closeAllPreviews() {
+  for (const p of Array.from(previewPanels.values())) closePanel(p);
+}
+
+// Shift varianta: zavři všechny preview, otevři jen main (= jediné okno).
+function openMainOnly(node) {
+  closeAllPreviews();
+  openMain(node);
 }
 
 function openMain(node) {
@@ -1322,6 +1385,11 @@ function setupKeyboard(_unused, vp) {
         recenter(node.path);
         return;
       }
+      // Shift+Enter na souboru = jediné okno (zavři preview, otevři main)
+      if (e.shiftKey) {
+        openMainOnly(node);
+        return;
+      }
       openMain(node);
       return;
     }
@@ -1382,7 +1450,7 @@ async function boot() {
   setupKeyboard(grid, vp);
   if (rootNode) focusNode(rootNode);
 
-  hits.addEventListener('click', (e) => {
+  const handleHit = (e, mode) => {
     const el = e.target.closest('.hit');
     if (!el) return;
     const path = el.dataset.path;
@@ -1390,8 +1458,13 @@ async function boot() {
     if (!node) return;
     focusNode(node);
     if (e.metaKey || e.ctrlKey) openPreview(node);
+    else if (e.shiftKey) openMainOnly(node);
+    else if (mode === 'main') openMain(node);
     else openMain(node);
-  });
+  };
+  hits.addEventListener('click', (e) => handleHit(e, 'main'));
+  // double-click také otevře okno (i kdyby single byl "spolknut" cestou)
+  hits.addEventListener('dblclick', (e) => handleHit(e, 'main'));
 }
 
 boot().catch((err) => {

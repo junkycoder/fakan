@@ -385,6 +385,17 @@ button {
 }
 .panel__btn:hover { color: var(--fg); background: color-mix(in oklab, var(--fg) 8%, transparent); }
 .panel__btn--play.is-active { color: var(--c-green); }
+.panel__btn--auto {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+}
+.panel__btn--auto.is-active {
+  color: var(--c-yellow);
+  border-color: color-mix(in oklab, var(--c-yellow) 50%, transparent);
+}
 .panel__btn--close:hover { color: var(--c-red); }
 
 /* zobrazení zdroje */
