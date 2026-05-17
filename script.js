@@ -920,11 +920,11 @@ function createPanel(node, variant) {
 function positionPanel(panel) {
   const el = panel.element;
   if (panel.variant === 'main') {
-    el.style.right = '16px';
+    el.style.left = '16px';
     el.style.top = `calc(16px + var(--safe-t))`;
   } else {
     const stack = previewPanels.size;
-    el.style.right = `${24 + stack * 28}px`;
+    el.style.left = `${24 + stack * 28}px`;
     el.style.top = `calc(${24 + stack * 28}px + var(--safe-t))`;
   }
 }
