@@ -1390,7 +1390,8 @@ function setupKeyboard(_unused, vp) {
         openMainOnly(node);
         return;
       }
-      openMain(node);
+      // bez modifieru: otevři vždy v novém okně (preview-styled, additive)
+      openPreview(node);
       return;
     }
 
@@ -1450,6 +1451,8 @@ async function boot() {
   setupKeyboard(grid, vp);
   if (rootNode) focusNode(rootNode);
 
+  // dblclick odešle nejdřív 1-2× click — single akci odložím, aby ji dblclick stihl zrušit
+  let pendingSingle = null;
   const handleHit = (e, mode) => {
     const el = e.target.closest('.hit');
     if (!el) return;
@@ -1457,14 +1460,18 @@ async function boot() {
     const node = byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
-    if (e.metaKey || e.ctrlKey) openPreview(node);
-    else if (e.shiftKey) openMainOnly(node);
-    else if (mode === 'main') openMain(node);
-    else openMain(node);
+    if (e.shiftKey) { openMainOnly(node); return; }
+    if (e.metaKey || e.ctrlKey) { openPreview(node); return; }
+    if (mode === 'new') {
+      if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
+      openPreview(node);
+      return;
+    }
+    if (pendingSingle) clearTimeout(pendingSingle);
+    pendingSingle = setTimeout(() => { pendingSingle = null; openMain(node); }, 220);
   };
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
-  // double-click také otevře okno (i kdyby single byl "spolknut" cestou)
-  hits.addEventListener('dblclick', (e) => handleHit(e, 'main'));
+  hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
 }
 
 boot().catch((err) => {
