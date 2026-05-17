@@ -532,3 +532,161 @@ button {
   background: transparent;
   padding: 0;
 }
+
+/* --- vim editor --------------------------------------------------------- */
+
+.vim {
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  outline: none;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fg);
+}
+.vim__pane {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+.vim__gutter {
+  padding: 8px 8px 8px 10px;
+  text-align: right;
+  color: var(--muted);
+  opacity: 0.55;
+  user-select: none;
+  border-right: 1px solid color-mix(in oklab, var(--line) 50%, transparent);
+  background: color-mix(in oklab, var(--fg) 2%, transparent);
+  flex-shrink: 0;
+}
+.vim__gn {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  min-width: 2ch;
+}
+.vim__view {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  padding: 8px 12px;
+  min-width: 0;
+}
+.vim__buf {
+  margin: 0;
+  padding: 0;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+  color: var(--fg);
+  position: relative;
+  z-index: 1;
+}
+.vim__sel {
+  position: absolute;
+  top: 8px; left: 12px;
+  pointer-events: none;
+  z-index: 0;
+}
+.vim__selrect {
+  position: absolute;
+  background: color-mix(in oklab, var(--c-yellow) 30%, transparent);
+}
+.vim__cursor {
+  position: absolute;
+  top: 8px; left: 12px;
+  pointer-events: none;
+  z-index: 2;
+  background: var(--c-yellow);
+  mix-blend-mode: multiply;
+  transition: top 0.04s linear, left 0.04s linear;
+}
+.vim__cursor.is-insert {
+  background: var(--c-blue);
+  mix-blend-mode: normal;
+}
+.vim .vim__cursor { opacity: 0.45; }
+.vim.is-focused .vim__cursor { opacity: 0.85; }
+.vim.is-focused .vim__cursor.is-block { animation: vim-blink 1.05s steps(1,end) infinite; }
+@keyframes vim-blink {
+  50% { opacity: 0.45; }
+}
+@media (prefers-color-scheme: dark) {
+  .vim__cursor { mix-blend-mode: screen; }
+}
+
+.vim__status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px;
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.vim__mode {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--bg);
+  background: var(--muted);
+}
+.vim__mode[data-mode="normal"]      { background: var(--c-blue); color: #fff; }
+.vim__mode[data-mode="insert"]      { background: var(--c-green); color: #fff; }
+.vim__mode[data-mode="visual"]      { background: var(--c-purple); color: #fff; }
+.vim__mode[data-mode="visual-line"] { background: var(--c-purple); color: #fff; }
+.vim__mode[data-mode="command"]     { background: var(--c-orange); color: #fff; }
+.vim__mode[data-mode="search"]      { background: var(--c-pink); color: #fff; }
+
+.vim__file { color: var(--fg); }
+.vim__msg { flex: 1; color: var(--c-yellow); }
+.vim__msg[data-kind="err"] { color: var(--c-red); }
+.vim__pos { color: var(--muted); }
+
+.vim__cmdline {
+  display: none;
+  padding: 4px 10px;
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  color: var(--fg);
+  flex-shrink: 0;
+  white-space: pre;
+}
+.vim__cmdline.is-active { display: block; }
+
+/* tokeny */
+.tok-kw    { color: var(--c-purple); font-weight: 600; }
+.tok-str   { color: var(--c-green); }
+.tok-num   { color: var(--c-orange); }
+.tok-cmt   { color: var(--muted); font-style: italic; }
+.tok-fn    { color: var(--c-blue); }
+.tok-op    { color: var(--c-red); }
+.tok-pun   { color: var(--muted); }
+.tok-var   { color: var(--c-teal); }
+.tok-sel   { color: var(--c-blue); }
+.tok-prop  { color: var(--c-teal); }
+.tok-val   { color: var(--c-orange); }
+.tok-tag   { color: var(--c-red); }
+.tok-attr  { color: var(--c-teal); }
+.tok-key   { color: var(--c-blue); }
+
+.tok-md-h      { color: var(--c-red); font-weight: 700; }
+.tok-md-bold   { color: var(--fg); font-weight: 700; }
+.tok-md-em     { color: var(--fg); font-style: italic; }
+.tok-md-code   { color: var(--c-orange); }
+.tok-md-fence  { color: var(--muted); }
+.tok-md-bullet { color: var(--c-blue); font-weight: 700; }
+.tok-md-quote  { color: var(--c-teal); font-style: italic; }
+.tok-md-link   { color: var(--c-blue); text-decoration: underline; }
+.tok-md-rule   { color: var(--muted); }

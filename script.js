@@ -3,7 +3,10 @@
 // podle typu (.md → sever, adresáře → jih, kód → východ, ostatní → západ).
 // Render: ASCII tree-znaky do char-grid → jeden <pre> + překryvy pro kliky.
 
+import { mountEditor } from './editor.js';
+
 const TREE_URL = './tree.json';
+const LS_EDIT_PREFIX = 'fakan:edit:';
 const CHAR_W = 8.4;
 const LINE_H = 18;
 
@@ -693,6 +696,7 @@ function rebuildMindmap(focusPath) {
   // pořadí: index nejdřív (vyplní n.quadrant), pak paint (čte ho pro data-quadrant)
   treeNodes = grid.nodes;
   buildTreeIndex(grid.nodes);
+  loadAllEditOverrides(grid.nodes);
   currentBbox = paint(map, labels, hits, grid);
   const rootNode = grid.nodes.find((n) => n.type === 'root');
   const target = focusPath != null
@@ -803,11 +807,8 @@ function sourceBody(node) {
     if (!node.hasChildren) return '<p class="panel__note empty">Zatím prázdné.</p>';
     return renderDirTree(node);
   }
-  const raw = node.raw != null ? node.raw : (node.content || '');
-  if (!raw) {
-    return `<p class="panel__note empty">Prázdný soubor <code>${escapeHtml(node.filename || node.name)}</code>.</p>`;
-  }
-  return `<pre class="src"><code>${escapeHtml(raw)}</code></pre>`;
+  // soubor: vim editor (mount po vložení do DOM).
+  return `<div class="vim-mount" data-vim-mount></div>`;
 }
 
 function renderedBody(node) {
@@ -900,6 +901,70 @@ function positionPanel(panel) {
   }
 }
 
+// --- editor mount / persist -------------------------------------------------
+
+function editKey(node) { return LS_EDIT_PREFIX + (node.path || ''); }
+
+function loadEditOverride(node) {
+  try { return localStorage.getItem(editKey(node)); } catch { return null; }
+}
+
+function saveEditOverride(node, text) {
+  try {
+    const original = node._originalRaw != null ? node._originalRaw : (node.raw != null ? node.raw : (node.content || ''));
+    if (text === original) localStorage.removeItem(editKey(node));
+    else localStorage.setItem(editKey(node), text);
+  } catch {}
+}
+
+function applyEditToNode(node, text) {
+  if (node._originalRaw == null) node._originalRaw = node.raw != null ? node.raw : (node.content || '');
+  node.raw = text;
+  if (node.kind === 'md') node.content = text;
+}
+
+// načte uložené edits z localStorage a aplikuje je na in-memory tree.
+function loadAllEditOverrides(nodes) {
+  for (const n of nodes) {
+    if (!n.path || n.type === 'dir' || n.type === 'root') continue;
+    const saved = loadEditOverride(n);
+    if (saved != null) applyEditToNode(n, saved);
+  }
+}
+
+function mountEditorIfNeeded(panel, bodyEl) {
+  const host = bodyEl.querySelector('[data-vim-mount]');
+  if (!host) return;
+  const node = panel.node;
+  const filename = node.filename || node.name || '';
+  const initialText = node.raw != null ? node.raw : (node.content || '');
+  let debounce = null;
+  const handle = mountEditor(host, {
+    text: initialText,
+    filename,
+    onChange: (text) => {
+      applyEditToNode(node, text);
+      clearTimeout(debounce);
+      debounce = setTimeout(() => saveEditOverride(node, text), 400);
+    },
+    onSave: (text) => {
+      applyEditToNode(node, text);
+      saveEditOverride(node, text);
+    },
+    onClose: () => closePanel(panel),
+  });
+  panel.editor = handle;
+  // dej editoru focus, aby vim klávesy fungovaly hned
+  requestAnimationFrame(() => handle.focus());
+}
+
+function destroyEditor(panel) {
+  if (panel.editor) {
+    try { panel.editor.destroy(); } catch {}
+    panel.editor = null;
+  }
+}
+
 function setupPanelInteractions(panel) {
   const el = panel.element;
   const head = el.querySelector('[data-panel-head]');
@@ -908,6 +973,7 @@ function setupPanelInteractions(panel) {
   const closeBtn = el.querySelector('[data-panel-close]');
   const bodyEl = el.querySelector('[data-panel-body]');
 
+  mountEditorIfNeeded(panel, bodyEl);
   closeBtn.addEventListener('click', () => closePanel(panel));
 
   // klikatelné uzly v ASCII stromu (jen u dir-panelu, ale handler je univerzální)
@@ -944,8 +1010,10 @@ function setupPanelInteractions(panel) {
   if (playBtn) {
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      destroyEditor(panel);
       panel.mode = panel.mode === 'source' ? 'rendered' : 'source';
       bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
+      mountEditorIfNeeded(panel, bodyEl);
       playBtn.classList.toggle('is-active', panel.mode === 'rendered');
       playBtn.textContent = panel.mode === 'source' ? 'play' : 'src';
       playBtn.title = panel.mode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
@@ -1148,6 +1216,7 @@ function openSiblingFiles(node) {
 }
 
 function closePanel(panel) {
+  destroyEditor(panel);
   panel.element.remove();
   if (panel === mainPanel) mainPanel = null;
   else previewPanels.delete(panel.path);
@@ -1422,10 +1491,11 @@ function setupKeyboard(_unused, vp) {
   };
 
   window.addEventListener('keydown', (e) => {
-    // pokud uživatel píše do inputu / contenteditable, šipky nepřebíráme
+    // pokud uživatel píše do inputu / contenteditable / vim editoru, klávesy nepřebíráme
     const tgt = e.target;
     const tag = tgt && tgt.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (tgt && tgt.isContentEditable)) return;
+    if (tgt && tgt.closest && tgt.closest('.vim')) return;
 
     // Mac: Cmd+Shift+*, Win: Ctrl+Shift+* — okenní zkratky
     const mod = e.metaKey || e.ctrlKey;
@@ -1553,6 +1623,7 @@ async function boot() {
   const grid = buildMindmap(tree, '');
   treeNodes = grid.nodes;
   buildTreeIndex(grid.nodes);
+  loadAllEditOverrides(grid.nodes);
   currentBbox = paint(map, labels, hits, grid);
   const rootNode = grid.nodes.find((n) => n.type === 'root');
 
