@@ -1852,9 +1852,12 @@ async function ghApi(spec, path) {
     headers: { Accept: 'application/vnd.github+json', ...ghAuthHeaders(spec) },
   });
   if (!r.ok) {
-    const msg = r.status === 404 ? 'repo nenalezen nebo bez přístupu'
+    const msg = r.status === 404 ? 'repo nebo větev neexistuje (zkontrolujte owner/repo)'
       : r.status === 401 ? 'token neplatný'
       : r.status === 403 ? 'GitHub odmítl (rate limit nebo přístup)'
+      : r.status === 409 ? 'repo je prázdné — žádné commity v default branch'
+      : r.status === 422 ? 'GitHub: neplatný požadavek (špatná větev?)'
+      : r.status >= 500 ? `GitHub má výpadek (${r.status})`
       : `GitHub ${r.status}`;
     throw new Error(msg);
   }
