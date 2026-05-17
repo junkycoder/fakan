@@ -1323,7 +1323,7 @@ button {
   position: fixed;
   top: calc(12px + var(--safe-t));
   right: calc(12px + var(--safe-r));
-  z-index: 30;
+  z-index: 9;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

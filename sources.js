@@ -6,6 +6,7 @@ import {
   state,
   FALLBACK_PATTERNS, IDB_NAME, IDB_STORE, IDB_KEY,
   IDB_KEY_SNAPSHOT, IDB_KEY_GH, IDB_KEY_RECENT, RECENT_CAP,
+  LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN, WAITLIST_ENDPOINT, HOSTED_PRICE_CZK,
   RESERVED_SUBDOMAINS, EMAIL_RE, SUBDOMAIN_RE,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
@@ -1448,7 +1449,14 @@ function buildZipBlob(entries) {
   return new Blob([...local, ...central, eocd], { type: 'application/zip' });
 }
 
-async function readNodeBytes(node) {
+function loadEditOverrideByPath(path) {
+  if (!path) return null;
+  try { return localStorage.getItem(LS_EDIT_PREFIX + path); } catch { return null; }
+}
+
+async function readNodeBytes(node, path) {
+  const override = loadEditOverrideByPath(path);
+  if (override != null) return new TextEncoder().encode(override);
   if (typeof node.raw === 'string') return new TextEncoder().encode(node.raw);
   if (typeof node.content === 'string') return new TextEncoder().encode(node.content);
   if (node._file && typeof node._file.arrayBuffer === 'function') {
@@ -1463,6 +1471,8 @@ async function readNodeBytes(node) {
   return null;
 }
 
+function nodeSeg(n) { return n.type === 'file' ? (n.filename || n.name) : n.name; }
+
 async function collectExportEntries(tree, rootPrefix) {
   const out = [];
   const visit = async (node, prefix) => {
@@ -1470,19 +1480,20 @@ async function collectExportEntries(tree, rootPrefix) {
     if (node.type === 'dir') {
       if (node.children) {
         for (const c of node.children) {
-          const next = prefix ? `${prefix}/${c.name}` : c.name;
+          const seg = nodeSeg(c);
+          const next = prefix ? `${prefix}/${seg}` : seg;
           await visit(c, next);
         }
       }
       return;
     }
     if (node.type === 'file') {
-      const data = await readNodeBytes(node);
+      const data = await readNodeBytes(node, prefix);
       if (data) out.push({ path: rootPrefix ? `${rootPrefix}/${prefix}` : prefix, data });
     }
   };
   if (tree?.children) {
-    for (const c of tree.children) await visit(c, c.name);
+    for (const c of tree.children) await visit(c, nodeSeg(c));
   }
   return out;
 }
@@ -1537,14 +1548,19 @@ async function collectGithubPushFiles(tree) {
   const visit = (node, prefix) => {
     if (!node) return;
     if (node.type === 'dir') {
-      if (node.children) for (const c of node.children) visit(c, prefix ? `${prefix}/${c.name}` : c.name);
+      if (node.children) for (const c of node.children) {
+        const seg = nodeSeg(c);
+        visit(c, prefix ? `${prefix}/${seg}` : seg);
+      }
       return;
     }
-    if (node.type === 'file' && typeof node.raw === 'string') {
-      out.push({ path: prefix, data: enc.encode(node.raw) });
+    if (node.type === 'file') {
+      const override = loadEditOverrideByPath(prefix);
+      const text = override != null ? override : (typeof node.raw === 'string' ? node.raw : null);
+      if (text != null) out.push({ path: prefix, data: enc.encode(text) });
     }
   };
-  if (tree?.children) for (const c of tree.children) visit(c, c.name);
+  if (tree?.children) for (const c of tree.children) visit(c, nodeSeg(c));
   return out;
 }
 
