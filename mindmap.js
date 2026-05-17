@@ -123,9 +123,11 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
       });
 
       if (child.children && child.children.length) {
-        // 2. úroveň — rozkošatění top-level uzlů s ≥3 dětmi do W+S+E sub-stran.
+        // 2. úroveň — rozkošatění top-level uzlů s ≥6 dětmi do W+S+E sub-stran.
         // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
-        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= 3) {
+        // Práh 6 (ne 3) — menší uzly zůstanou lineární, aby sub-strany sourozenců
+        // uvnitř stejného kvadrantu na sebe nenarážely.
+        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= 6) {
           const sub = layoutSubBranches(child, path);
           composeBody(g, sub, row, cc + 4);
           const sb = bbox(sub);
