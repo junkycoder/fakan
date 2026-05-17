@@ -15,6 +15,18 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 ---
 
+## 2026-05-17 16:36 — claude
+
+`.gitignore` (root + vnořené) se teď respektuje ve všech třech zdrojích —
+GitHub Trees API, upload fallback, FS Access. Kombinuje se s `.fokrc`
+(oba filtrují, žádný nepřebíjí). Vlastní mini-parser vedle `isHidden`:
+`parseGitignoreLine` / `parseGitignore` / `buildGitignoreIndex` /
+`isGitignored`. Hlubší `.gitignore` přepisuje povrchnější jako git.
+
+Commit `a0cd3da` — jen mé hunky v `script.js` (+139/−7), zbytek
+working tree (`web` snapshot feature, `isTextFile`, README atd.)
+ponecháno nepřipraveno pro paralelní session. **Nepushováno.**
+
 ## 2026-05-17 12:41 — user
 
 místo autoplay v headeru dej všechny md a html (dir/index) spuštěné a pak uděláme podporu pro .sh, a .js které budou v .bin/
