@@ -15,6 +15,10 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 ---
 
+## 2026-05-17 10:56 — user
+
+doufám, že ignoruješ tyhle úlevy
+
 ## 2026-05-17 10:51 — user
 
 dobré ráno

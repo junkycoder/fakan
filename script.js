@@ -66,33 +66,29 @@ const charForDirs = (d) => {
 
 function layoutBody(children, pathPrefix = '', sepTop = 1) {
   const g = makeGrid();
+  g.topRows = []; // řádky top-level dětí — pro vystředění root spojnice mimo node
   let cursor = 0;
 
   const walk = (subs, prefix, parentPath, depth) => {
     const n = subs.length;
     for (let i = 0; i < n; i++) {
-      // prázdný řádek mezi top-level skupinami (jen depth 0, ne před prvním dítětem)
-      // a jen pokud alespoň jeden ze sousedů má potomky — nemá smysl dělat mezeru
-      // mezi řadou listů (např. .gitignore / index.html / script.js / styles.css na východě)
+      // prázdný řádek mezi top-level dětmi: vždy, ne jen u skupin s children.
+      // Důvod: dává root spojnici šanci padnout do gap místo na node;
+      // zároveň vizuálně rozvolňuje hustou řadu souborů.
       if (depth === 0 && i > 0 && sepTop > 0) {
-        const prev = subs[i - 1];
-        const curr = subs[i];
-        const groupy = (prev.children && prev.children.length) ||
-                       (curr.children && curr.children.length);
-        if (groupy) {
-          for (let s = 0; s < sepTop; s++) {
-            const blank = cursor++;
-            for (let j = 0; j < prefix.length; j++) {
-              if (prefix[j] === '|') gridConn(g, blank, j, { n: true, s: true });
-            }
-            gridConn(g, blank, prefix.length, { n: true, s: true });
+        for (let s = 0; s < sepTop; s++) {
+          const blank = cursor++;
+          for (let j = 0; j < prefix.length; j++) {
+            if (prefix[j] === '|') gridConn(g, blank, j, { n: true, s: true });
           }
+          gridConn(g, blank, prefix.length, { n: true, s: true });
         }
       }
 
       const child = subs[i];
       const isLast = i === n - 1;
       const row = cursor++;
+      if (depth === 0) g.topRows.push(row);
       const path = parentPath ? `${parentPath}/${child.name}` : child.name;
 
       // pokračující trunk z předků v této řadě
@@ -223,7 +219,32 @@ function distribute(children) {
   return q;
 }
 
+// Vrátí řádek body, na který má padnout root spojnice EAST/WEST tak,
+// aby trefila mezeru mezi top-level dětmi (ne přímo název souboru).
+// - 1 dítě: padne na něj (single node nemá kam jinam).
+// - sudý počet: gap mezi dvěma prostředními top-row.
+// - lichý počet: gap nad prostředním top-row (asymetrie, ale spojnice nepřebije node).
+function midGapRow(topRows, _bb) {
+  const n = topRows.length;
+  if (n <= 1) return topRows[0] || 0;
+  if (n % 2 === 0) {
+    const lo = topRows[n / 2 - 1];
+    const hi = topRows[n / 2];
+    return Math.floor((lo + hi) / 2);
+  }
+  const midIdx = (n - 1) / 2;
+  const mid = topRows[midIdx];
+  if (midIdx > 0) {
+    const above = topRows[midIdx - 1];
+    return Math.floor((above + mid) / 2);
+  }
+  return mid;
+}
+
 // --- celkový build mindmapy --------------------------------------------------
+
+// Vizuální zvětšení rootu — musí ladit s CSS .labels .n--root transform: scale(...).
+const ROOT_SCALE = 1.4;
 
 function buildMindmap(tree, basePath = '') {
   const g = makeGrid();
@@ -234,6 +255,12 @@ function buildMindmap(tree, basePath = '') {
   const rootCol = -Math.floor(rootLen / 2);
   const rootRow = 0;
   const rootRight = rootCol + rootLen - 1;
+  // Root je vykreslen větším fontem → vizuálně přesahuje grid o `rootPad`
+  // znaků na každou stranu. EAST/WEST trunky musí začínat až za touto hranicí,
+  // jinak by se spojnice překrývaly s textem rootu.
+  const rootPad = Math.ceil(((ROOT_SCALE - 1) / 2) * rootLen);
+  const rootRightVis = rootRight + rootPad;
+  const rootLeftVis = rootCol - rootPad;
   gridNode(g, rootRow, rootCol, {
     name: rootName,
     type: 'root',
@@ -245,20 +272,23 @@ function buildMindmap(tree, basePath = '') {
 
   // Pre-compute EAST/WEST extenty, abychom mohli SOUTH/NORTH posunout
   // dál od rootu, když je horizontální větev vyšší než 1 řádek na stranu.
+  // Cíl: rootRow padne do gap mezi top-level dětmi, aby napojení od rootu
+  // bylo `┤`/`├` v prázdnu, ne `┼` přes název souboru.
   let eastInfo = null, westInfo = null;
   if (q.east.length) {
     const body = layoutBody(q.east, basePath);
     const bb = bbox(body);
-    const centerOffset = Math.floor((bb.height - 1) / 2);
-    const dRow = rootRow - centerOffset;
+    const midRow = midGapRow(body.topRows, bb);
+    const dRow = rootRow - midRow;
     eastInfo = { body, bb, dRow, topRow: dRow + bb.minR, bottomRow: dRow + bb.maxR };
   }
   if (q.west.length) {
     const body = layoutBody(q.west, basePath);
+    // flip nemění řádky, jen sloupce, takže midRow lze spočítat až po
     flipBodyHorizontal(body);
     const bb = bbox(body);
-    const centerOffset = Math.floor((bb.height - 1) / 2);
-    const dRow = rootRow - centerOffset;
+    const midRow = midGapRow(body.topRows, bb);
+    const dRow = rootRow - midRow;
     westInfo = { body, bb, dRow, topRow: dRow + bb.minR, bottomRow: dRow + bb.maxR };
   }
 
@@ -292,11 +322,13 @@ function buildMindmap(tree, basePath = '') {
   }
 
   // EAST ----------------------------------------------------------------
+  // Trunk je dál od rootu o rootPad + 5: 2 prázdné cols (mezera za rootem),
+  // pak 3× `─`, pak `┤`/`├`/`┼`. Mezera respektuje vizuální šířku rootu.
   if (eastInfo) {
     const { body, bb, dRow } = eastInfo;
-    const trunkCol = rootRight + 4;
+    const trunkCol = rootRightVis + 5;
     composeBody(g, body, dRow, trunkCol);
-    for (let c = rootRight + 1; c < trunkCol; c++) {
+    for (let c = rootRightVis + 2; c < trunkCol; c++) {
       gridConn(g, rootRow, c, { e: true, w: true });
     }
     gridConn(g, rootRow, trunkCol, { w: true });
@@ -307,10 +339,10 @@ function buildMindmap(tree, basePath = '') {
   // WEST ----------------------------------------------------------------
   if (westInfo) {
     const { body, bb, dRow } = westInfo;
-    const trunkCol = rootCol - 4;
+    const trunkCol = rootLeftVis - 5;
     const dCol = trunkCol - bb.maxC;
     composeBody(g, body, dRow, dCol);
-    for (let c = trunkCol + 1; c < rootCol; c++) {
+    for (let c = trunkCol + 1; c <= rootLeftVis - 2; c++) {
       gridConn(g, rootRow, c, { e: true, w: true });
     }
     gridConn(g, rootRow, trunkCol, { e: true });
@@ -325,13 +357,14 @@ function buildMindmap(tree, basePath = '') {
 
 function renderGrid(grid) {
   const bb = bbox(grid);
-  // 2D pole znaků
+  // 2D pole znaků — jen konektory, žádné názvy.
+  // Názvy jdou do .labels overlay, aby každá hloubka mohla mít vlastní font-size
+  // bez rozbití char gridu.
   const rows = [];
   for (let r = 0; r < bb.height; r++) {
     rows.push(new Array(bb.width).fill(' '));
   }
 
-  // konektory
   for (const [k, d] of grid.conn) {
     const [r, c] = k.split('|').map(Number);
     const localR = r - bb.minR;
@@ -339,46 +372,14 @@ function renderGrid(grid) {
     rows[localR][localC] = charForDirs(d);
   }
 
-  // uzly přebijí konektory (text)
-  const nodeMeta = []; // {row, col, len, ...node}
-  for (const node of grid.nodes) {
-    const localR = node.row - bb.minR;
-    const localC = node.col - bb.minC;
-    for (let i = 0; i < node.name.length; i++) {
-      rows[localR][localC + i] = node.name[i];
-    }
-    nodeMeta.push({ ...node, localRow: localR, localCol: localC });
-  }
+  const nodeMeta = grid.nodes.map((node) => ({
+    ...node,
+    localRow: node.row - bb.minR,
+    localCol: node.col - bb.minC,
+  }));
 
-  // sestavení HTML pre s obarvenými uzly
-  // Pro každý řádek: postavíme řetězec a vložíme <span> kolem uzlů.
-  // Indexujeme uzly podle (row,col-rozsahu).
-  const html = [];
-  const nodesByRow = new Map();
-  for (const n of nodeMeta) {
-    if (!nodesByRow.has(n.localRow)) nodesByRow.set(n.localRow, []);
-    nodesByRow.get(n.localRow).push(n);
-  }
-  for (const arr of nodesByRow.values()) arr.sort((a, b) => a.localCol - b.localCol);
-
-  for (let r = 0; r < bb.height; r++) {
-    const arr = nodesByRow.get(r) || [];
-    let cursor = 0;
-    const line = rows[r];
-    let out = '';
-    for (const n of arr) {
-      // text před uzlem (jen konektory)
-      out += escapeHtml(line.slice(cursor, n.localCol).join(''));
-      const cls = nodeClass(n);
-      const pathAttr = n.path != null ? ` data-node-path="${escapeHtml(n.path || '/')}"` : '';
-      out += `<span class="n ${cls}"${pathAttr}>${escapeHtml(n.name)}</span>`;
-      cursor = n.localCol + n.name.length;
-    }
-    out += escapeHtml(line.slice(cursor).join(''));
-    html.push(out);
-  }
-
-  return { html: html.join('\n'), nodeMeta, bbox: bb };
+  const html = rows.map((line) => escapeHtml(line.join(''))).join('\n');
+  return { html, nodeMeta, bbox: bb };
 }
 
 function nodeClass(n) {
@@ -407,9 +408,23 @@ function escapeHtml(s) {
 
 // --- DOM rendering -----------------------------------------------------------
 
-function paint(map, hits, grid) {
+function paint(map, labels, hits, grid) {
   const { html, nodeMeta, bbox: bb } = renderGrid(grid);
   map.innerHTML = html;
+
+  // popisky jako overlay — mimo char grid, vlastní transform per hloubka.
+  // data-quadrant řídí transform-origin (west = right, ostatní = left).
+  labels.innerHTML = '';
+  for (const n of nodeMeta) {
+    const el = document.createElement('span');
+    el.className = `n ${nodeClass(n)}`;
+    if (n.path != null) el.dataset.nodePath = n.path || '/';
+    if (n.quadrant) el.dataset.quadrant = n.quadrant;
+    el.textContent = n.name;
+    el.style.top = `${n.localRow * LINE_H}px`;
+    el.style.left = `${n.localCol * CHAR_W}px`;
+    labels.appendChild(el);
+  }
 
   // překryvy pro kliky
   hits.innerHTML = '';
@@ -658,15 +673,18 @@ function rebuildMindmap(focusPath) {
   if (!sub) return;
   const grid = buildMindmap(sub, currentRootPath);
   const map = document.getElementById('map');
+  const labels = document.getElementById('labels');
   const hits = document.getElementById('hits');
-  currentBbox = paint(map, hits, grid);
+  // pořadí: index nejdřív (vyplní n.quadrant), pak paint (čte ho pro data-quadrant)
   treeNodes = grid.nodes;
   buildTreeIndex(grid.nodes);
+  currentBbox = paint(map, labels, hits, grid);
   const rootNode = grid.nodes.find((n) => n.type === 'root');
   const target = focusPath != null
     ? (byPath.get(focusPath) || rootNode)
     : rootNode;
   if (target) focusNode(target);
+  refreshOpenLabels();
   if (viewportApi) {
     requestAnimationFrame(viewportApi.center);
   }
@@ -902,6 +920,7 @@ function openMain(node) {
   mainPanel = panel;
   if (panelNavListener) panelNavListener();
   setActive(panel);
+  refreshOpenLabels();
   return panel;
 }
 
@@ -921,6 +940,7 @@ function openPreview(node) {
   previewPanels.set(path, panel);
   if (panelNavListener) panelNavListener();
   setActive(panel);
+  refreshOpenLabels();
   return panel;
 }
 
@@ -975,6 +995,7 @@ function openAsFollower(node) {
   followerPanel = panel;
   if (panelNavListener) panelNavListener();
   setActive(panel);
+  refreshOpenLabels();
 }
 
 function openSiblingFiles(node) {
@@ -1007,6 +1028,7 @@ function closePanel(panel) {
     }
   }
   if (panelNavListener) panelNavListener();
+  refreshOpenLabels();
 }
 
 // --- spodní navigace --------------------------------------------------------
@@ -1104,10 +1126,21 @@ function focusNode(node) {
   document.querySelectorAll('.hit--focus').forEach((el) => el.classList.remove('hit--focus'));
   const hit = document.querySelector(`.hit[data-path="${cssEscapePath(focusedPath || '/')}"]`);
   if (hit) hit.classList.add('hit--focus');
-  // vizuální focus = bold žluté písmo v <pre class="map">
-  document.querySelectorAll('.map .n--focus').forEach((el) => el.classList.remove('n--focus'));
-  const span = document.querySelector(`.map [data-node-path="${cssEscapePath(focusedPath || '/')}"]`);
+  // vizuální focus = bold žluté písmo v .labels
+  document.querySelectorAll('.labels .n--focus').forEach((el) => el.classList.remove('n--focus'));
+  const span = document.querySelector(`.labels [data-node-path="${cssEscapePath(focusedPath || '/')}"]`);
   if (span) span.classList.add('n--focus');
+}
+
+function refreshOpenLabels() {
+  const open = new Set();
+  if (mainPanel) open.add(mainPanel.path);
+  for (const p of previewPanels.values()) open.add(p.path);
+  document.querySelectorAll('.labels .n--open').forEach((el) => el.classList.remove('n--open'));
+  for (const path of open) {
+    const span = document.querySelector(`.labels [data-node-path="${cssEscapePath(path)}"]`);
+    if (span) span.classList.add('n--open');
+  }
 }
 
 function cssEscapePath(p) {
@@ -1268,6 +1301,9 @@ function setupKeyboard(_unused, vp) {
         const action = QUAD_ACTIONS[current.quadrant]?.[dir];
         if (action) next = move(current, action);
       }
+      // fallback: když strom-akce nic nevrátí (list, konec sourozenců),
+      // zkus geometricky nejbližší uzel — aby šipka nezůstávala "zaseklá".
+      if (!next) next = findNeighbor(current, dir, treeNodes);
       if (next) {
         focusNode(next);
         vp.ensureVisible(next);
@@ -1325,12 +1361,13 @@ async function boot() {
   const canvas = document.getElementById('canvas');
   const viewport = document.getElementById('viewport');
   const map = document.getElementById('map');
+  const labels = document.getElementById('labels');
   const hits = document.getElementById('hits');
 
   const grid = buildMindmap(tree, '');
-  currentBbox = paint(map, hits, grid);
   treeNodes = grid.nodes;
   buildTreeIndex(grid.nodes);
+  currentBbox = paint(map, labels, hits, grid);
   const rootNode = grid.nodes.find((n) => n.type === 'root');
 
   const vp = setupViewport(canvas, viewport, () => {

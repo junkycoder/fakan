@@ -109,24 +109,64 @@ button {
   pointer-events: none;
 }
 
-/* node labels — různě barevné podle typu */
-.map .n      { color: var(--fg); }
-.map .n--root { color: var(--fg); font-weight: 700; font-size: 1.25em; }
-.map .n--dir { color: var(--c-blue); }
-.map .n--doc { color: var(--c-orange); }
-.map .n--code { color: var(--c-green); }
-.map .n--other { color: var(--muted); }
-.map .n--empty { color: var(--muted); opacity: 0.55; }
+/* labels overlay — názvy uzlů mimo char grid (kvůli per-depth font-size) */
+.labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  font-family: var(--mono);
+}
+.labels .n {
+  position: absolute;
+  white-space: nowrap;
+  line-height: var(--line-h);
+  height: var(--line-h);
+  display: inline-flex;
+  align-items: center;
+  transform-origin: left center;
+}
 
-/* hloubková hierarchie — slabší weight + opacita pro vzdálenější úrovně */
-.map .n--depth-1 { font-weight: 600; }
-.map .n--depth-2 { opacity: 0.95; }
-.map .n--depth-3 { opacity: 0.82; font-weight: 400; }
-.map .n--depth-4 { opacity: 0.7; font-weight: 400; }
-.map .n--depth-5 { opacity: 0.6; font-weight: 400; }
+/* node labels — barva podle typu */
+.labels .n      { color: var(--fg); }
+.labels .n--dir { color: var(--c-blue); }
+.labels .n--doc { color: var(--c-orange); }
+.labels .n--code { color: var(--c-green); }
+.labels .n--other { color: var(--muted); }
+.labels .n--empty { color: var(--muted); opacity: 0.55; }
 
-/* fokus + aktivní v mindmapě = tučné žluté, bez outline */
-.map .n--focus { color: var(--c-yellow); font-weight: 700; opacity: 1; }
+/* hloubková hierarchie — vizuálně velký střed, čím dál, tím menší.
+   Scale (ne font-size) zachovává monospace grid sirku spanu pro hit zóny.
+   transform-origin per kvadrant — WEST se škáluje od pravého okraje (k trunku),
+   EAST/N/S od levého. ROOT_SCALE musí ladit se script.js ROOT_SCALE. */
+.labels .n--root {
+  color: var(--fg);
+  font-weight: 700;
+  transform: scale(1.4);
+  transform-origin: center center;
+  letter-spacing: 0.02em;
+}
+.labels .n--depth-1 { font-weight: 600; transform: scale(1.08); }
+.labels .n--depth-2 { transform: scale(0.96); opacity: 0.95; }
+.labels .n--depth-3 { transform: scale(0.86); opacity: 0.82; }
+.labels .n--depth-4 { transform: scale(0.78); opacity: 0.7; }
+.labels .n--depth-5 { transform: scale(0.72); opacity: 0.6; }
+
+.labels .n[data-quadrant="west"] { transform-origin: right center; }
+
+/* fokus = tučné žluté, plná opacita; měřítko se nemění (ať fokus nepřeskakuje) */
+.labels .n--focus {
+  color: var(--c-yellow);
+  font-weight: 700;
+  opacity: 1;
+}
+
+/* otevřené v některém okně — jemný žlutý "highlighter" za textem */
+.labels .n--open {
+  background: color-mix(in oklab, var(--c-yellow) 28%, transparent);
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
 
 /* --- klikatelné překryvy nad názvy uzlů ----------------------------------- */
 
