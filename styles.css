@@ -595,7 +595,7 @@ button {
 }
 .vim__sel {
   position: absolute;
-  top: 8px; left: 12px;
+  top: 0; left: 0;
   pointer-events: none;
   z-index: 0;
 }
@@ -605,7 +605,7 @@ button {
 }
 .vim__cursor {
   position: absolute;
-  top: 8px; left: 12px;
+  top: 0; left: 0;
   pointer-events: none;
   z-index: 2;
   background: var(--c-yellow);

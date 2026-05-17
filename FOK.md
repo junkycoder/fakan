@@ -15,6 +15,10 @@ Nejnovější nahoře. Formát časového razítka `YYYY-MM-DD` (případně `HH
 
 ---
 
+## 2026-05-17 12:41 — user
+
+místo autoplay v headeru dej všechny md a html (dir/index) spuštěné a pak uděláme podporu pro .sh, a .js které budou v .bin/
+
 ## 2026-05-17 10:56 — user
 
 doufám, že ignoruješ tyhle úlevy

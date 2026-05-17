@@ -485,8 +485,8 @@ export function mountEditor(host, opts = {}) {
   const msgEl = root.querySelector('[data-vim-msg]');
   const cmdEl = root.querySelector('[data-vim-cmdline]');
 
-  // změřit char-width a line-height z reálného DOMu (font může differ od mindmapy)
-  let charW = 8.4, lineH = 18;
+  // změřit char-width, line-height a padding view (kvůli alignmentu cursoru/sel).
+  let charW = 8.4, lineH = 18, padX = 0, padY = 0;
   const measure = () => {
     const s = document.createElement('span');
     s.textContent = 'M'.repeat(20);
@@ -498,6 +498,10 @@ export function mountEditor(host, opts = {}) {
     charW = r.width / 20;
     lineH = r.height;
     s.remove();
+    const cs = getComputedStyle(view);
+    padX = parseFloat(cs.paddingLeft) || 0;
+    padY = parseFloat(cs.paddingTop) || 0;
+    window.__vimDbg = { padX, padY, charW, lineH, padRaw: cs.paddingLeft };
   };
 
   // --- render ---------------------------------------------------------------
@@ -517,8 +521,8 @@ export function mountEditor(host, opts = {}) {
 
   function placeCursor() {
     const { row, col } = state.cursor;
-    cursorEl.style.top = `${row * lineH}px`;
-    cursorEl.style.left = `${col * charW}px`;
+    cursorEl.style.top = `${padY + row * lineH}px`;
+    cursorEl.style.left = `${padX + col * charW}px`;
     if (state.mode === 'insert') {
       cursorEl.classList.add('is-insert');
       cursorEl.classList.remove('is-block');
@@ -529,11 +533,11 @@ export function mountEditor(host, opts = {}) {
     cursorEl.style.width = state.mode === 'insert' ? '2px' : `${charW}px`;
     cursorEl.style.height = `${lineH}px`;
     // scroll into view
-    const cTop = row * lineH;
+    const cTop = padY + row * lineH;
     const cBottom = cTop + lineH;
-    if (cTop < view.scrollTop) view.scrollTop = cTop;
+    if (cTop < view.scrollTop + padY) view.scrollTop = Math.max(0, cTop - padY);
     if (cBottom > view.scrollTop + view.clientHeight) view.scrollTop = cBottom - view.clientHeight;
-    const cLeft = col * charW;
+    const cLeft = padX + col * charW;
     if (cLeft < view.scrollLeft) view.scrollLeft = cLeft;
     if (cLeft + charW > view.scrollLeft + view.clientWidth) view.scrollLeft = cLeft + charW - view.clientWidth;
   }
@@ -549,7 +553,7 @@ export function mountEditor(host, opts = {}) {
       for (let r = range.startRow; r <= range.endRow; r++) {
         const lineLen = state.lines[r].length;
         const w = Math.max(lineLen, 1) * charW;
-        html.push(`<div class="vim__selrect" style="top:${r * lineH}px;left:0;width:${w}px;height:${lineH}px"></div>`);
+        html.push(`<div class="vim__selrect" style="top:${padY + r * lineH}px;left:${padX}px;width:${w}px;height:${lineH}px"></div>`);
       }
     } else {
       for (let r = range.startRow; r <= range.endRow; r++) {
@@ -559,7 +563,7 @@ export function mountEditor(host, opts = {}) {
         if (r === range.endRow) c1 = range.endCol + 1;
         const w = Math.max((c1 - c0), 0) * charW;
         if (w === 0) continue;
-        html.push(`<div class="vim__selrect" style="top:${r * lineH}px;left:${c0 * charW}px;width:${w}px;height:${lineH}px"></div>`);
+        html.push(`<div class="vim__selrect" style="top:${padY + r * lineH}px;left:${padX + c0 * charW}px;width:${w}px;height:${lineH}px"></div>`);
       }
     }
     selEl.innerHTML = html.join('');
@@ -1233,8 +1237,8 @@ export function mountEditor(host, opts = {}) {
   function onClick(e) {
     // klik = umísti kurzor v normal/insert (v insert mode necháváme insert)
     const rect = view.getBoundingClientRect();
-    const x = e.clientX - rect.left + view.scrollLeft;
-    const y = e.clientY - rect.top + view.scrollTop;
+    const x = e.clientX - rect.left + view.scrollLeft - padX;
+    const y = e.clientY - rect.top + view.scrollTop - padY;
     const row = Math.max(0, Math.min(state.lines.length - 1, Math.floor(y / lineH)));
     const col = Math.max(0, Math.round(x / charW));
     const max = state.lines[row].length;
