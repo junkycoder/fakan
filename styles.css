@@ -1252,6 +1252,72 @@ button {
   padding: 5px 10px;
 }
 
+/* --- Pravidla užití (fullscreen modal s iframe) --------------------------- */
+.rules-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: color-mix(in oklab, var(--bg) 50%, transparent);
+  backdrop-filter: blur(8px);
+}
+.rules-dialog__panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+}
+.rules-dialog__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in oklab, var(--bg) 90%, var(--fg));
+}
+.rules-dialog__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+  letter-spacing: 0.01em;
+}
+.rules-dialog__open {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.rules-dialog__open:hover { color: var(--fg); background: color-mix(in oklab, var(--fg) 8%, transparent); }
+.rules-dialog__close {
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 8px;
+  border-radius: 4px;
+}
+.rules-dialog__close:hover { color: var(--c-red); background: color-mix(in oklab, var(--c-red) 12%, transparent); }
+.rules-dialog__frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: var(--bg);
+}
+@media (max-width: 640px) {
+  .rules-dialog {
+    padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+}
+
 /* --- floating badge + wizard --------------------------------------------- */
 .badge {
   position: fixed;

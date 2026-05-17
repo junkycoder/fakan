@@ -1466,6 +1466,8 @@ export function mountBadge() {
       <button type="button" class="badge__cta badge__cta--tip" data-badge-tip>Přispět</button>
     </div>
     <div class="badge__meta-row">
+      <a class="badge__meta" href="pravidla.html" data-badge-rules>pravidla užití</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">mail</a>
@@ -1476,6 +1478,42 @@ export function mountBadge() {
   wrap.removeAttribute('hidden');
   wrap.querySelector('[data-badge-want]').addEventListener('click', () => showWizard());
   wrap.querySelector('[data-badge-tip]').addEventListener('click', () => showTipDialog());
+  wrap.querySelector('[data-badge-rules]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showRulesDialog();
+  });
+}
+
+// --- Pravidla užití (fullscreen modal s iframe) -----------------------------
+
+function showRulesDialog() {
+  document.querySelector('[data-rules-dialog]')?.remove();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'rules-dialog';
+  wrap.setAttribute('data-rules-dialog', '');
+  wrap.innerHTML = `
+    <div class="rules-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="rules-title">
+      <header class="rules-dialog__head">
+        <h2 class="rules-dialog__title" id="rules-title">Pravidla užití</h2>
+        <a class="rules-dialog__open" href="pravidla.html" target="_blank" rel="noopener" title="Otevřít v nové záložce">↗</a>
+        <button type="button" class="rules-dialog__close" data-rules-close aria-label="Zavřít">×</button>
+      </header>
+      <iframe class="rules-dialog__frame" src="pravidla.html" title="Pravidla užití"></iframe>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelector('[data-rules-close]').addEventListener('click', close);
 }
 
 // --- Tip dialog (QR Platba) -------------------------------------------------
