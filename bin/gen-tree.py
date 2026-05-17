@@ -70,11 +70,47 @@ TEXT_EXTENSIONS = {
     ".ts", ".tsx", ".yaml", ".yml", ".toml",
 }
 
+SNAPSHOT_META_RE = re.compile(
+    r'<meta\s+name=["\']fakan-snapshot-of["\']\s+content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+SNAPSHOT_FETCHED_RE = re.compile(
+    r'<meta\s+name=["\']fakan-fetched-at["\']\s+content=["\']([^"\']+)["\']',
+    re.IGNORECASE,
+)
+TITLE_RE = re.compile(r"<title[^>]*>([^<]+)</title>", re.IGNORECASE | re.DOTALL)
+
+
+def hostname_of(url: str) -> str:
+    # primitivní extrakce hostname, bez urllib (drž stdlib lehce)
+    m = re.match(r"https?://([^/]+)", url, re.IGNORECASE)
+    if not m:
+        return url
+    host = m.group(1).lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def detect_web_snapshot(text: str) -> dict | None:
+    """Vrátí dict s url/title/fetched_at, pokud HTML obsahuje fakan-snapshot meta."""
+    m = SNAPSHOT_META_RE.search(text)
+    if not m:
+        return None
+    url = m.group(1)
+    fm = SNAPSHOT_FETCHED_RE.search(text)
+    tm = TITLE_RE.search(text)
+    title = tm.group(1).strip() if tm else ""
+    return {
+        "url": url,
+        "title": title,
+        "fetched_at": fm.group(1) if fm else None,
+    }
+
 
 def make_file_node(entry: Path) -> dict:
     name = entry.name
     ext = entry.suffix.lower()
     is_md = ext == ".md"
+    is_html = ext in (".html", ".htm")
     is_text = ext in TEXT_EXTENSIONS or name.startswith(".")
 
     node = {
@@ -95,6 +131,22 @@ def make_file_node(entry: Path) -> dict:
             node["title"] = fm.get("title") or ""
             node["content"] = body  # markdown body (po frontmatteru)
             node["raw"] = text       # surový text souboru včetně frontmatteru
+        elif is_html:
+            snap = detect_web_snapshot(text)
+            if snap:
+                # web uzel: snapshot externí stránky.
+                # Záměrně NEukládáme `content`/`raw` do tree.json — single-file HTML
+                # má klidně stovky KB až MB. Panel fetchne soubor přes `path` přímo.
+                node["kind"] = "web"
+                node["url"] = snap["url"]
+                node["fetched_at"] = snap["fetched_at"]
+                display = snap["title"] or hostname_of(snap["url"]) or entry.stem
+                node["title"] = display
+                # display name v stromu (bez .html); filename si drží přesný název na disku
+                node["name"] = display
+            else:
+                node["content"] = text
+                node["raw"] = text
         else:
             node["content"] = text
             node["raw"] = text

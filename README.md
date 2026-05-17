@@ -56,6 +56,7 @@ Vzniká pro mě, abych měl jedno plátno, kde se schází profil, texty, projek
 - `.md` listy mají YAML frontmatter (`title`, `slug`) + tělo
 - Defaultně se v okně ukazuje **zdroj**; tlačítko `play` přepne na rendrovaný markdown
 - `.html` listy se `play` otevřou jako **iframe**, automaticky se otevřou sourozenecké soubory projektu jako preview vedle
+- **Web uzly** = single-file HTML snapshoty cizích webů (např. `imagineanything.cz`). Stahují se přes `python3 bin/fetch-web.py <URL> [cesta/]` — assety (CSS, JS, obrázky, fonty) se zinlinují jako `data:` URIs, 3rd-party trackery a service workery se vystřihnou. Kvadrant určí složka, do které soubor uložíte. Panel je otevře v sandboxovaném iframu a v hlavičce ukáže `↗` odkaz na originál.
 - Vlastní minimální markdown renderer (nadpisy, bold/italic, code, lists, links, hr, code blocks) — žádná externí závislost
 
 ### Klávesnice

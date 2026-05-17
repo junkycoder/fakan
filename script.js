@@ -54,6 +54,8 @@ function fileMeta(child) {
     title: child.title,
     content: child.content,
     raw: child.raw,
+    url: child.url,
+    fetched_at: child.fetched_at,
   };
 }
 
@@ -91,7 +93,10 @@ function layoutBody(children, pathPrefix = '', sepTop = 1) {
       const isLast = i === n - 1;
       const row = cursor++;
       if (depth === 0) g.topRows.push(row);
-      const path = parentPath ? `${parentPath}/${child.name}` : child.name;
+      // pro file uzly konstruuj path z `filename` (web uzly mají `name` jen jako display label);
+      // pro dir je filename undefined → fallback na name.
+      const seg = child.type === 'file' ? (child.filename || child.name) : child.name;
+      const path = parentPath ? `${parentPath}/${seg}` : seg;
 
       // pokračující trunk z předků v této řadě
       for (let j = 0; j < prefix.length; j++) {
@@ -363,8 +368,11 @@ function renderGrid(grid) {
   // Názvy jdou do .labels overlay, aby každá hloubka mohla mít vlastní font-size
   // bez rozbití char gridu.
   const rows = [];
-  for (let r = 0; r < bb.height; r++) {
-    rows.push(new Array(bb.width).fill(' '));
+  // Math.max chrání před RangeError u patologického bbox (width/height ≤ 0 nebo NaN)
+  const H = Math.max(0, bb.height | 0);
+  const W = Math.max(0, bb.width | 0);
+  for (let r = 0; r < H; r++) {
+    rows.push(new Array(W).fill(' '));
   }
 
   for (const [k, d] of grid.conn) {
@@ -392,10 +400,11 @@ function nodeClass(n) {
     const depth = (n.path || '').split('/').filter(Boolean).length;
     base = `n--depth-${Math.min(depth, 5)}`;
     if (n.type === 'dir') base += n.hasChildren ? ' n--dir' : ' n--dir n--empty';
+    else if (n.kind === 'web') base += ' n--web';
     else if (n.kind === 'md') base += ' n--doc';
     else {
       const fn = (n.filename || n.name || '').toLowerCase();
-      if (/\.(html|css|js|sh|py|json|ts|tsx)$/.test(fn)) base += ' n--code';
+      if (/\.(html?|css|scss|sass|less|m?js|cjs|jsx|tsx?|vue|svelte|sh|bash|zsh|py|rb|erb|rake|gemspec|ru|go|rs|java|kt|kts|scala|clj|cpp?|cc|cxx|hp?p?|swift|php|pl|lua|r|jl|ex|exs|dart|zig|nim|cr|hs|ml|fs|sql|json5?|yaml|yml|toml|xml|ini|conf|env|lock)$/.test(fn)) base += ' n--code';
       else base += ' n--other';
     }
   }
@@ -605,6 +614,7 @@ function renderMarkdown(md) {
 // source — uživatel přepne playem ručně.
 function defaultPanelMode(node) {
   if (!node) return 'source';
+  if (node.kind === 'web') return 'rendered';
   if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
   if (node.kind === 'md' && (node.content || '').trim()) return 'rendered';
   const fn = (node.filename || node.name || '').toLowerCase();
@@ -756,7 +766,9 @@ function pathLabel(node) {
 function renderTreeInlineHTML(grid) {
   const bb = bbox(grid);
   const rows = [];
-  for (let r = 0; r < bb.height; r++) rows.push(new Array(bb.width).fill(' '));
+  const H = Math.max(0, bb.height | 0);
+  const W = Math.max(0, bb.width | 0);
+  for (let r = 0; r < H; r++) rows.push(new Array(W).fill(' '));
   for (const [k, d] of grid.conn) {
     const [r, c] = k.split('|').map(Number);
     rows[r - bb.minR][c - bb.minC] = charForDirs(d);
@@ -774,7 +786,7 @@ function renderTreeInlineHTML(grid) {
   }
   for (const arr of nodesByRow.values()) arr.sort((a, b) => a.localCol - b.localCol);
   const html = [];
-  for (let r = 0; r < bb.height; r++) {
+  for (let r = 0; r < H; r++) {
     const arr = nodesByRow.get(r) || [];
     let cursor = 0;
     const line = rows[r];
@@ -806,11 +818,23 @@ function sourceBody(node) {
     if (!node.hasChildren) return '<p class="panel__note empty">Zatím prázdné.</p>';
     return renderDirTree(node);
   }
+  if (node.kind === 'web') {
+    const url = node.url || '';
+    const fetched = node.fetched_at ? ` · staženo ${escapeHtml(node.fetched_at)}` : '';
+    return `<p class="panel__note">Snapshot externí stránky. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">otevřít originál ↗</a>${fetched}</p>`;
+  }
   // soubor: vim editor (mount po vložení do DOM).
   return `<div class="vim-mount" data-vim-mount></div>`;
 }
 
 function renderedBody(node) {
+  if (node.kind === 'web') {
+    // single-file snapshot na disku — browser ho fetchne přes path.
+    // Sandbox bez allow-same-origin = snapshot nevidí na fakan.cz state (IndexedDB, localStorage).
+    const src = encodeURI(node.path || '');
+    const titleAttr = escapeHtml(node.title || node.url || node.name);
+    return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${titleAttr}"></iframe>`;
+  }
   if (node.kind === 'md' && node.content) {
     return `<div class="md">${renderMarkdown(node.content)}</div>`;
   }
@@ -840,6 +864,7 @@ function dirIndexHtml(node) {
 }
 
 function canBuild(node) {
+  if (node.kind === 'web') return true;
   if (node.kind === 'md' && node.content && node.content.trim()) return true;
   const fn = (node.filename || node.name || '').toLowerCase();
   if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return true;
@@ -864,9 +889,13 @@ function createPanel(node, variant) {
   const initialMode = buildable ? defaultPanelMode(node) : 'source';
   const playLabel = initialMode === 'source' ? 'play' : 'src';
   const playTitle = initialMode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
+  const webRef = node.kind === 'web' && node.url
+    ? `<a class="panel__webref" href="${escapeHtml(node.url)}" target="_blank" rel="noopener noreferrer" title="Otevřít originál ${escapeHtml(node.url)}">↗</a>`
+    : '';
   el.innerHTML = `
     <header class="panel__head" data-panel-head>
       <span class="panel__path">${escapeHtml(pathLabel(node))}</span>
+      ${webRef}
       <div class="panel__actions">
         ${buildable ? `<button class="panel__btn panel__btn--play${initialMode === 'rendered' ? ' is-active' : ''}" type="button" data-panel-play title="${playTitle}" aria-label="Sestavit">${playLabel}</button>` : ''}
         <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
@@ -1625,10 +1654,56 @@ function setupKeyboard(_unused, vp) {
 // Funguje v Chromu / Edge / Brave. Safari + Firefox zatím FS Access API nemají.
 
 const TEXT_EXTENSIONS = new Set([
-  '.md', '.html', '.css', '.js', '.json', '.txt', '.sh', '.py',
-  '.ts', '.tsx', '.yaml', '.yml', '.toml',
+  // text & dokumenty
+  '.md', '.markdown', '.txt', '.rst', '.adoc', '.tex', '.org',
+  // web
+  '.html', '.htm', '.css', '.scss', '.sass', '.less',
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.vue', '.svelte',
+  // data & config
+  '.json', '.jsonc', '.json5', '.yaml', '.yml', '.toml', '.xml',
+  '.csv', '.tsv', '.ini', '.conf', '.env', '.lock',
+  // skripty & shell
+  '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd',
+  // programovací jazyky
+  '.py', '.rb', '.erb', '.rake', '.gemspec', '.ru',
+  '.go', '.rs', '.java', '.kt', '.kts', '.scala', '.clj',
+  '.c', '.cc', '.cpp', '.cxx', '.h', '.hpp', '.m', '.mm',
+  '.swift', '.php', '.pl', '.lua', '.r', '.jl', '.ex', '.exs',
+  '.dart', '.zig', '.nim', '.cr', '.hs', '.ml', '.fs',
+  // SQL
+  '.sql', '.psql',
+  // pseudo-binární ale text-friendly
+  '.svg', '.log', '.diff', '.patch',
 ]);
-const FALLBACK_PATTERNS = [{ pat: '.*', neg: false }, { pat: '__pycache__', neg: false }];
+
+// Soubory bez tečky/přípony, které jsou ve skutečnosti textové.
+const TEXT_FILENAMES = new Set([
+  'Gemfile', 'Rakefile', 'Capfile', 'Guardfile', 'Procfile',
+  'Dockerfile', 'Makefile', 'Containerfile',
+  'README', 'LICENSE', 'CHANGELOG', 'AUTHORS', 'CONTRIBUTORS',
+  'TODO', 'NOTICE', 'COPYING', 'INSTALL', 'VERSION',
+]);
+
+function isTextFile(name, ext) {
+  if (TEXT_EXTENSIONS.has(ext)) return true;
+  if (TEXT_FILENAMES.has(name)) return true;
+  // dotfiles (.gitignore, .env.local, .editorconfig) — bez mezery, žádný binární typ
+  if (name.startsWith('.') && !name.includes(' ')) return true;
+  return false;
+}
+
+const FALLBACK_PATTERNS = [
+  { pat: '.*', neg: false },
+  { pat: '__pycache__', neg: false },
+  { pat: 'node_modules', neg: false },
+  { pat: 'vendor', neg: false },
+  { pat: 'tmp', neg: false },
+  { pat: 'log', neg: false },
+  { pat: 'coverage', neg: false },
+  { pat: 'dist', neg: false },
+  { pat: 'build', neg: false },
+  { pat: 'target', neg: false },
+];
 
 function loadFokrcPatterns(text) {
   const out = [];
@@ -1777,7 +1852,7 @@ async function makeFileNode(handle) {
   const name = handle.name;
   const [stem, ext] = splitExt(name);
   const isMd = ext === '.md';
-  const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+  const isText = isTextFile(name, ext);
   const node = {
     name,
     type: 'file',
@@ -2218,7 +2293,7 @@ async function loadFromGithub(spec, onStatus) {
       if (!parent) continue;
       const [stem, ext] = splitExt(name);
       const isMd = ext === '.md';
-      const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+      const isText = isTextFile(name, ext);
       const node = {
         name, type: 'file',
         kind: isMd ? 'md' : (isText ? 'text' : 'other'),

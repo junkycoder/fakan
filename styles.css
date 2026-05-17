@@ -131,6 +131,7 @@ button {
 .labels .n--dir { color: var(--c-blue); }
 .labels .n--doc { color: var(--c-orange); }
 .labels .n--code { color: var(--c-green); }
+.labels .n--web { color: var(--c-teal); }
 .labels .n--other { color: var(--muted); }
 .labels .n--empty { color: var(--muted); opacity: 0.55; }
 
@@ -424,6 +425,17 @@ button {
   flex: 1;
 }
 
+.panel__webref {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--c-teal);
+  text-decoration: none;
+  padding: 3px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.panel__webref:hover { background: color-mix(in oklab, var(--c-teal) 18%, transparent); }
+
 .panel__actions {
   display: flex;
   gap: 2px;
@@ -483,6 +495,7 @@ button {
 .src-tree .n--dir    { color: var(--c-blue); }
 .src-tree .n--doc    { color: var(--c-orange); }
 .src-tree .n--code   { color: var(--c-green); }
+.src-tree .n--web    { color: var(--c-teal); }
 .src-tree .n--other  { color: var(--muted); }
 .src-tree .n--empty  { color: var(--muted); opacity: 0.55; }
 
