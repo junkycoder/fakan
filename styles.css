@@ -484,9 +484,15 @@ button {
   font-size: 13px;
   color: var(--muted);
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
 }
 .panel__body p { margin: 0 0 8px; }
 .panel__body .empty { font-style: italic; }
+/* vim editor si spravuje vlastní padding a výplň, body proto zploštíme */
+.panel__body:has(.vim-mount) { padding: 0; overflow: hidden; }
+.vim-mount { height: 100%; width: 100%; display: flex; min-width: 0; }
+.vim-mount .vim { flex: 1; min-width: 0; }
 
 /* --- markdown content --- */
 .md { color: var(--fg); line-height: 1.5; }
