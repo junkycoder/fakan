@@ -1358,6 +1358,351 @@ function showBranchPicker() {
   })();
 }
 
+// --- Export: mini ZIP encoder (stored, bez deflate) -------------------------
+
+const CRC32_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) c = CRC32_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+
+function dosDateTime(date) {
+  const d = date || new Date();
+  const dosTime = ((d.getHours() & 0x1F) << 11) | ((d.getMinutes() & 0x3F) << 5) | ((d.getSeconds() >>> 1) & 0x1F);
+  const yr = Math.max(1980, d.getFullYear());
+  const dosDate = (((yr - 1980) & 0x7F) << 9) | (((d.getMonth() + 1) & 0xF) << 5) | (d.getDate() & 0x1F);
+  return { dosTime, dosDate };
+}
+
+// entries: [{ path: string, data: Uint8Array, mtime?: Date }]
+function buildZipBlob(entries) {
+  const enc = new TextEncoder();
+  const local = [];
+  const central = [];
+  let offset = 0;
+  for (const e of entries) {
+    const nameBytes = enc.encode(e.path);
+    const crc = crc32(e.data);
+    const size = e.data.length;
+    const { dosTime, dosDate } = dosDateTime(e.mtime);
+    const lfh = new Uint8Array(30);
+    const lv = new DataView(lfh.buffer);
+    lv.setUint32(0, 0x04034b50, true);
+    lv.setUint16(4, 20, true);
+    lv.setUint16(6, 0x0800, true); // UTF-8 flag
+    lv.setUint16(8, 0, true);      // store
+    lv.setUint16(10, dosTime, true);
+    lv.setUint16(12, dosDate, true);
+    lv.setUint32(14, crc, true);
+    lv.setUint32(18, size, true);
+    lv.setUint32(22, size, true);
+    lv.setUint16(26, nameBytes.length, true);
+    lv.setUint16(28, 0, true);
+    local.push(lfh, nameBytes, e.data);
+
+    const cdh = new Uint8Array(46);
+    const cv = new DataView(cdh.buffer);
+    cv.setUint32(0, 0x02014b50, true);
+    cv.setUint16(4, 20, true);
+    cv.setUint16(6, 20, true);
+    cv.setUint16(8, 0x0800, true);
+    cv.setUint16(10, 0, true);
+    cv.setUint16(12, dosTime, true);
+    cv.setUint16(14, dosDate, true);
+    cv.setUint32(16, crc, true);
+    cv.setUint32(20, size, true);
+    cv.setUint32(24, size, true);
+    cv.setUint16(28, nameBytes.length, true);
+    cv.setUint16(30, 0, true);
+    cv.setUint16(32, 0, true);
+    cv.setUint16(34, 0, true);
+    cv.setUint16(36, 0, true);
+    cv.setUint32(38, 0, true);
+    cv.setUint32(42, offset, true);
+    central.push(cdh, nameBytes);
+
+    offset += 30 + nameBytes.length + size;
+  }
+  const cdStart = offset;
+  const cdSize = central.reduce((s, p) => s + p.length, 0);
+  const eocd = new Uint8Array(22);
+  const ev = new DataView(eocd.buffer);
+  ev.setUint32(0, 0x06054b50, true);
+  ev.setUint16(4, 0, true);
+  ev.setUint16(6, 0, true);
+  ev.setUint16(8, entries.length, true);
+  ev.setUint16(10, entries.length, true);
+  ev.setUint32(12, cdSize, true);
+  ev.setUint32(16, cdStart, true);
+  ev.setUint16(20, 0, true);
+  return new Blob([...local, ...central, eocd], { type: 'application/zip' });
+}
+
+async function readNodeBytes(node) {
+  if (typeof node.raw === 'string') return new TextEncoder().encode(node.raw);
+  if (typeof node.content === 'string') return new TextEncoder().encode(node.content);
+  if (node._file && typeof node._file.arrayBuffer === 'function') {
+    try { return new Uint8Array(await node._file.arrayBuffer()); } catch {}
+  }
+  if (node._handle && typeof node._handle.getFile === 'function') {
+    try {
+      const f = await node._handle.getFile();
+      return new Uint8Array(await f.arrayBuffer());
+    } catch {}
+  }
+  return null;
+}
+
+async function collectExportEntries(tree, rootPrefix) {
+  const out = [];
+  const visit = async (node, prefix) => {
+    if (!node) return;
+    if (node.type === 'dir') {
+      if (node.children) {
+        for (const c of node.children) {
+          const next = prefix ? `${prefix}/${c.name}` : c.name;
+          await visit(c, next);
+        }
+      }
+      return;
+    }
+    if (node.type === 'file') {
+      const data = await readNodeBytes(node);
+      if (data) out.push({ path: rootPrefix ? `${rootPrefix}/${prefix}` : prefix, data });
+    }
+  };
+  if (tree?.children) {
+    for (const c of tree.children) await visit(c, c.name);
+  }
+  return out;
+}
+
+function sanitizeFilename(s) {
+  return String(s || 'fakan').replace(/[\\/:*?"<>|]+/g, '_').replace(/^[\s.]+|[\s.]+$/g, '') || 'fakan';
+}
+
+async function exportAsZip() {
+  const tree = state.originalTree;
+  if (!tree) { alert('Není co exportovat.'); return; }
+  const rawName = state.rootHandle?.name
+    || state.uploadedSnapshot?.name
+    || state.githubSpec?.repo
+    || tree.name
+    || 'fakan';
+  const safeName = sanitizeFilename(rawName);
+  let entries;
+  try {
+    entries = await collectExportEntries(tree, safeName);
+  } catch (e) {
+    console.error('export collect failed', e);
+    alert(`Export selhal: ${e.message}`);
+    return;
+  }
+  if (!entries.length) { alert('Nic k exportu — strom je prázdný.'); return; }
+  const blob = buildZipBlob(entries);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${safeName}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+// --- Export: GitHub push ----------------------------------------------------
+
+function bytesToBase64(bytes) {
+  let s = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(s);
+}
+
+async function collectGithubPushFiles(tree) {
+  const enc = new TextEncoder();
+  const out = [];
+  const visit = (node, prefix) => {
+    if (!node) return;
+    if (node.type === 'dir') {
+      if (node.children) for (const c of node.children) visit(c, prefix ? `${prefix}/${c.name}` : c.name);
+      return;
+    }
+    if (node.type === 'file' && typeof node.raw === 'string') {
+      out.push({ path: prefix, data: enc.encode(node.raw) });
+    }
+  };
+  if (tree?.children) for (const c of tree.children) visit(c, c.name);
+  return out;
+}
+
+async function ghPush(spec, message, files, onStatus) {
+  const note = (m) => { if (onStatus) onStatus(m); };
+  const headers = {
+    'Content-Type': 'application/json',
+    Accept: 'application/vnd.github+json',
+    ...ghAuthHeaders(spec),
+  };
+  const base = `https://api.github.com/repos/${spec.owner}/${spec.repo}`;
+  const br = encodeURIComponent(spec.branch || 'main');
+
+  note('načítám aktuální ref…');
+  const refRes = await fetch(`${base}/git/refs/heads/${br}`, { headers });
+  if (!refRes.ok) {
+    if (refRes.status === 404) throw new Error('větev neexistuje');
+    if (refRes.status === 401) throw new Error('token neplatný');
+    if (refRes.status === 403) throw new Error('chybí oprávnění (token bez repo scope?)');
+    throw new Error(`ref ${refRes.status}`);
+  }
+  const ref = await refRes.json();
+  const baseSha = ref.object.sha;
+
+  const commitRes = await fetch(`${base}/git/commits/${baseSha}`, { headers });
+  if (!commitRes.ok) throw new Error(`commit ${commitRes.status}`);
+  const baseCommit = await commitRes.json();
+  const baseTreeSha = baseCommit.tree.sha;
+
+  const tree = [];
+  let done = 0;
+  for (const f of files) {
+    note(`nahrávám blob ${done + 1}/${files.length}: ${f.path}`);
+    const r = await fetch(`${base}/git/blobs`, {
+      method: 'POST', headers,
+      body: JSON.stringify({ content: bytesToBase64(f.data), encoding: 'base64' }),
+    });
+    if (!r.ok) {
+      if (r.status === 403) throw new Error('token nemá zápis (potřeba repo scope / contents: write)');
+      throw new Error(`blob ${r.status} u ${f.path}`);
+    }
+    const blob = await r.json();
+    tree.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.sha });
+    done++;
+  }
+
+  note('sestavuji tree…');
+  const treeRes = await fetch(`${base}/git/trees`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ base_tree: baseTreeSha, tree }),
+  });
+  if (!treeRes.ok) throw new Error(`tree ${treeRes.status}`);
+  const newTree = await treeRes.json();
+  if (newTree.sha === baseTreeSha) return { unchanged: true };
+
+  note('vytvářím commit…');
+  const newCommitRes = await fetch(`${base}/git/commits`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ message, tree: newTree.sha, parents: [baseSha] }),
+  });
+  if (!newCommitRes.ok) throw new Error(`commit create ${newCommitRes.status}`);
+  const newCommit = await newCommitRes.json();
+
+  note('posouvám větev…');
+  const patchRes = await fetch(`${base}/git/refs/heads/${br}`, {
+    method: 'PATCH', headers,
+    body: JSON.stringify({ sha: newCommit.sha }),
+  });
+  if (!patchRes.ok) throw new Error(`ref patch ${patchRes.status}`);
+  return { sha: newCommit.sha, unchanged: false };
+}
+
+function showGithubPushDialog() {
+  if (!state.githubSpec) return;
+  document.querySelector('[data-gh-push-dialog]')?.remove();
+  const spec = state.githubSpec;
+  const wrap = document.createElement('div');
+  wrap.className = 'gh-dialog';
+  wrap.setAttribute('data-gh-push-dialog', '');
+  wrap.innerHTML = `
+    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Pushnout změny">
+      <h2 class="gh-dialog__title">Pushnout do ${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</h2>
+      <label class="gh-dialog__field">
+        <span>Commit message</span>
+        <input type="text" data-gh-msg autocomplete="off" spellcheck="false">
+      </label>
+      <label class="gh-dialog__field">
+        <span>Token <em>${spec.token ? '(uložený — vyplňte jen pro přepsání)' : '(potřeba pro push)'}</em></span>
+        <input type="password" data-gh-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
+      </label>
+      <p class="gh-dialog__hint">Pushnu na větev <strong>${escapeHtml(spec.branch || 'main')}</strong>. Přidám všechny textové soubory ze stromu (binární a smazané se neřeší).</p>
+      <div class="gh-dialog__status" data-gh-status></div>
+      <div class="gh-dialog__buttons">
+        <button type="button" class="gh-dialog__btn" data-gh-cancel>Zrušit</button>
+        <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-gh-ok>Pushnout</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+  const msgIn = wrap.querySelector('[data-gh-msg]');
+  const tokenIn = wrap.querySelector('[data-gh-token]');
+  const okBtn = wrap.querySelector('[data-gh-ok]');
+  const cancelBtn = wrap.querySelector('[data-gh-cancel]');
+  const statusEl = wrap.querySelector('[data-gh-status]');
+  msgIn.value = 'update z fakan.cz';
+
+  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  document.addEventListener('keydown', onKey);
+  cancelBtn.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+
+  const submit = async () => {
+    const message = msgIn.value.trim();
+    if (!message) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Vyplňte commit message.'; msgIn.focus(); return; }
+    const token = tokenIn.value.trim() || spec.token;
+    if (!token) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Pro push potřebujete token s repo přístupem.'; tokenIn.focus(); return; }
+    okBtn.disabled = true; cancelBtn.disabled = true;
+    statusEl.dataset.kind = 'info';
+    statusEl.textContent = 'sbírám soubory…';
+    try {
+      const files = await collectGithubPushFiles(state.originalTree);
+      if (!files.length) {
+        statusEl.dataset.kind = 'err';
+        statusEl.textContent = 'Žádné textové soubory s obsahem.';
+        okBtn.disabled = false; cancelBtn.disabled = false;
+        return;
+      }
+      const pushSpec = { ...spec, token, branch: spec.branch || 'main' };
+      const res = await ghPush(pushSpec, message, files, (m) => { statusEl.textContent = m; });
+      if (res.unchanged) {
+        statusEl.dataset.kind = 'err';
+        statusEl.textContent = 'Strom je shodný s remote — nepushlo se nic.';
+        okBtn.disabled = false; cancelBtn.disabled = false;
+        return;
+      }
+      statusEl.dataset.kind = 'info';
+      statusEl.textContent = `Hotovo — commit ${res.sha.slice(0, 7)}.`;
+      // pokud user vyplnil nový token, ulož ho do spec (zachová ho mezi sessionemi)
+      if (tokenIn.value.trim() && tokenIn.value.trim() !== spec.token) {
+        state.githubSpec = { ...spec, token: tokenIn.value.trim() };
+        await idbSetGithubSpec(state.githubSpec);
+      }
+      setTimeout(close, 1000);
+    } catch (err) {
+      console.error('push failed', err);
+      statusEl.dataset.kind = 'err';
+      statusEl.textContent = `Chyba: ${err.message}`;
+      okBtn.disabled = false; cancelBtn.disabled = false;
+    }
+  };
+  okBtn.addEventListener('click', submit);
+  const onEnter = (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); submit(); } };
+  msgIn.addEventListener('keydown', onEnter);
+  tokenIn.addEventListener('keydown', onEnter);
+  setTimeout(() => msgIn.focus(), 0);
+}
+
 // --- zdrojové menu v navu ---------------------------------------------------
 
 export function renderSourceMenu() {
@@ -1387,7 +1732,13 @@ export function renderSourceMenu() {
       onClick: showBranchPicker,
     });
   }
-  items.push({ label: 'Export…', disabled: true, title: 'Brzy' });
+  if (state.githubSpec) {
+    items.push({ label: 'Pushnout změny…', onClick: showGithubPushDialog });
+  } else if (hasSource) {
+    items.push({ label: 'Stáhnout jako ZIP', onClick: exportAsZip });
+  } else {
+    items.push({ label: 'Export…', disabled: true, title: 'Nejprve připojte zdroj' });
+  }
   if (hasSource) {
     items.push({ label: 'Odpojit zdroj', onClick: disconnectSource, danger: true });
   }
@@ -1466,7 +1817,7 @@ export function mountBadge() {
       <button type="button" class="badge__cta badge__cta--tip" data-badge-tip>Přispět</button>
     </div>
     <div class="badge__meta-row">
-      <a class="badge__meta" href="pravidla.html" data-badge-rules>pravidla užití</a>
+      <a class="badge__meta" href="pravidla.html" data-badge-rules>užití</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
