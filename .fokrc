@@ -1,0 +1,17 @@
+# fakan — co se NEzobrazuje v mindmapě.
+# Glob patterny matchované proti jménu entry (jako .gitignore).
+# Prefix "!" = výjimka (zobraz zpět).
+
+# dot files / dirs (.git, .claude, .fokrc, .bin/, .DS_Store, .gitignore, …)
+.*
+
+# build / cache
+__pycache__
+node_modules
+
+# generovaný strom + interní docs / log
+tree.json
+CLAUDE.md
+
+# generátor stromu (CLI nástroj, ne obsah)
+bin

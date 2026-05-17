@@ -597,24 +597,17 @@ function renderMarkdown(md) {
   return paras.replace(/ B(\d+) /g, (_, i) => blocks[Number(i)]);
 }
 
-// --- autoplay (per-soubor) --------------------------------------------------
-// Soubory v této množině se otevírají rovnou v rendered módu (iframe / md).
-// Persistuje se v localStorage, aby toggle přežil reload.
-const AUTOPLAY_KEY = 'fakan.autoplay';
-let autoplayPaths = new Set();
-try {
-  const raw = localStorage.getItem(AUTOPLAY_KEY);
-  if (raw) autoplayPaths = new Set(JSON.parse(raw));
-} catch {}
-
-function saveAutoplay() {
-  try { localStorage.setItem(AUTOPLAY_KEY, JSON.stringify([...autoplayPaths])); } catch {}
-}
-
-function toggleAutoplay(path) {
-  if (autoplayPaths.has(path)) autoplayPaths.delete(path);
-  else autoplayPaths.add(path);
-  saveAutoplay();
+// --- defaultní mode pro panel ------------------------------------------------
+// MD / HTML / dir-s-index.html se otevírají rovnou v rendered módu.
+// Ostatní spustitelné soubory (např. budoucí .sh / .js v .bin/) otevíráme jako
+// source — uživatel přepne playem ručně.
+function defaultPanelMode(node) {
+  if (!node) return 'source';
+  if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
+  if (node.kind === 'md' && (node.content || '').trim()) return 'rendered';
+  const fn = (node.filename || node.name || '').toLowerCase();
+  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return 'rendered';
+  return 'source';
 }
 
 // --- okna (panely) ----------------------------------------------------------
@@ -866,14 +859,9 @@ function createPanel(node, variant) {
   el.dataset.path = path;
 
   const buildable = canBuild(node);
-  // Dir s index.html otevírám rovnou jako rendered (source pro dir nedává smysl).
-  // Pro soubory respektuju per-soubor autoplay flag.
-  const isAutoDir = node.type === 'dir' && !!dirIndexHtml(node);
-  const autoplay = buildable && (isAutoDir || autoplayPaths.has(path));
-  const initialMode = autoplay ? 'rendered' : 'source';
-  // Auto toggle ukazuju jen pro soubory — u dir je rendered defaultní.
-  const showAuto = buildable && node.type !== 'dir';
-  const autoOn = autoplayPaths.has(path);
+  // MD / HTML / dir-s-index.html otevíráme rovnou v rendered módu;
+  // ostatní (text bez build cesty) v source. Play tlačítko jen mezi tím přepíná.
+  const initialMode = buildable ? defaultPanelMode(node) : 'source';
   const playLabel = initialMode === 'source' ? 'play' : 'src';
   const playTitle = initialMode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
   el.innerHTML = `
@@ -881,7 +869,6 @@ function createPanel(node, variant) {
       <span class="panel__path">${escapeHtml(pathLabel(node))}</span>
       <div class="panel__actions">
         ${buildable ? `<button class="panel__btn panel__btn--play${initialMode === 'rendered' ? ' is-active' : ''}" type="button" data-panel-play title="${playTitle}" aria-label="Sestavit">${playLabel}</button>` : ''}
-        ${showAuto ? `<button class="panel__btn panel__btn--auto${autoOn ? ' is-active' : ''}" type="button" data-panel-auto title="Otevírat rovnou v náhledu" aria-label="Autoplay">auto</button>` : ''}
         <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
         <button class="panel__btn panel__btn--close" type="button" data-panel-close title="Zavřít" aria-label="Zavřít">×</button>
       </div>
@@ -917,7 +904,6 @@ function setupPanelInteractions(panel) {
   const el = panel.element;
   const head = el.querySelector('[data-panel-head]');
   const playBtn = el.querySelector('[data-panel-play]');
-  const autoBtn = el.querySelector('[data-panel-auto]');
   const maxBtn = el.querySelector('[data-panel-max]');
   const closeBtn = el.querySelector('[data-panel-close]');
   const bodyEl = el.querySelector('[data-panel-body]');
@@ -954,14 +940,6 @@ function setupPanelInteractions(panel) {
   };
   bodyEl.addEventListener('click', (e) => handleTreeNode(e, 'main'));
   bodyEl.addEventListener('dblclick', (e) => handleTreeNode(e, 'new'));
-
-  if (autoBtn) {
-    autoBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      toggleAutoplay(panel.path);
-      autoBtn.classList.toggle('is-active', autoplayPaths.has(panel.path));
-    });
-  }
 
   if (playBtn) {
     playBtn.addEventListener('click', (e) => {

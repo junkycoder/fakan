@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import re
 import sys
@@ -14,9 +15,33 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-IGNORE_DIRS = {".git", ".claude", "node_modules", "bin", "__pycache__"}
-# CLAUDE.md jsou instrukce pro Claude Code, ne obsah pro web
-IGNORE_FILES = {".DS_Store", "tree.json", "CLAUDE.md"}
+# Patterny pro skrývání čte z `.fokrc` v rootu (glob na jméno entry, "!" = výjimka).
+# Bez `.fokrc` použij minimální fallback — dot files + Python cache.
+FOKRC = ROOT / ".fokrc"
+FALLBACK_PATTERNS = [(".*", False), ("__pycache__", False)]
+
+
+def load_patterns() -> list[tuple[str, bool]]:
+    if not FOKRC.exists():
+        return FALLBACK_PATTERNS
+    out: list[tuple[str, bool]] = []
+    for line in FOKRC.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        neg = line.startswith("!")
+        if neg:
+            line = line[1:].strip()
+        out.append((line, neg))
+    return out
+
+
+def is_hidden(name: str, patterns: list[tuple[str, bool]]) -> bool:
+    hidden = False
+    for pat, neg in patterns:
+        if fnmatch.fnmatch(name, pat):
+            hidden = not neg
+    return hidden
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 
@@ -77,7 +102,7 @@ def make_file_node(entry: Path) -> dict:
     return node
 
 
-def walk(path: Path, depth: int = 0, max_depth: int = 4) -> dict:
+def walk(path: Path, patterns: list[tuple[str, bool]], depth: int = 0, max_depth: int = 4) -> dict:
     node: dict = {"name": path.name or "fakan.cz", "type": "dir"}
     if depth >= max_depth:
         node["children"] = []
@@ -90,13 +115,11 @@ def walk(path: Path, depth: int = 0, max_depth: int = 4) -> dict:
 
     children = []
     for entry in entries:
+        if is_hidden(entry.name, patterns):
+            continue
         if entry.is_dir():
-            if entry.name in IGNORE_DIRS:
-                continue
-            children.append(walk(entry, depth + 1, max_depth))
+            children.append(walk(entry, patterns, depth + 1, max_depth))
         else:
-            if entry.name in IGNORE_FILES:
-                continue
             children.append(make_file_node(entry))
 
     node["children"] = children
@@ -104,7 +127,8 @@ def walk(path: Path, depth: int = 0, max_depth: int = 4) -> dict:
 
 
 def main() -> int:
-    tree = walk(ROOT)
+    patterns = load_patterns()
+    tree = walk(ROOT, patterns)
     tree["name"] = "fakan.cz"
     out = ROOT / "tree.json"
     out.write_text(json.dumps(tree, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
