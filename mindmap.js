@@ -68,8 +68,12 @@ const charForDirs = (d) => {
 // --- layout: down-body (standardní `tree`) -----------------------------------
 // Vrátí nový `body` grid s trunk col = 0 a první dítě na row 0.
 // `sepTop` = počet prázdných řádků mezi top-level dětmi (vizuální oddělení skupin).
+// `branchify` = pokud true, top-level děti (depth=0) s ≥3 vnořenými dětmi se
+// rozkošatí přes `layoutSubBranches` (W + S + E sub-strany kolem uzlu) místo
+// klasického lineárního indented podstromu. Sub-strany jsou v lokálních souřadnicích;
+// vnější `flipBody*` v buildMindmap je správně přeloží do globální orientace.
 
-function layoutBody(children, pathPrefix = '', sepTop = 1) {
+function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
   const g = makeGrid();
   g.topRows = []; // řádky top-level dětí — pro vystředění root spojnice mimo node
   let cursor = 0;
@@ -119,6 +123,26 @@ function layoutBody(children, pathPrefix = '', sepTop = 1) {
       });
 
       if (child.children && child.children.length) {
+        // 2. úroveň — rozkošatění top-level uzlů s ≥3 dětmi do W+S+E sub-stran.
+        // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
+        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= 3) {
+          const sub = layoutSubBranches(child, path);
+          composeBody(g, sub, row, cc + 4);
+          const sb = bbox(sub);
+          // Posun cursoru pod nejnižší řadu sub-strany (S forward jde dolů).
+          // +2 = 1 prázdný řádek pro vizuální oddělení od dalšího sourozence.
+          const advance = Math.max(1, sb.maxR);
+          // Doplnit svislý trunk parent layoutBody na col=0 přes řady, které sub-strana
+          // překlenuje vertikálně (mezi `app` a dalším sourozencem nesmí čára zmizet).
+          // Jen pokud uzel není poslední — pro poslední (└) trunk dál nepokračuje.
+          if (!isLast) {
+            for (let r = row + 1; r <= row + advance + 1; r++) {
+              gridConn(g, r, 0, { n: true, s: true });
+            }
+          }
+          cursor = row + advance + 2;
+          continue;
+        }
         const newPrefix = prefix + (isLast ? '    ' : '|   ');
         walk(child.children, newPrefix, path, depth + 1);
       }
@@ -126,6 +150,133 @@ function layoutBody(children, pathPrefix = '', sepTop = 1) {
   };
 
   walk(children, '', pathPrefix, 0);
+  return g;
+}
+
+// --- 2. úroveň: rozkošatění top-level uzlu do W + S + E sub-stran ----------
+// Lokální anchor (0, 0) = první znak jména uzlu; uzel samotný **neemittujeme**
+// (je už vykreslen volajícím `layoutBody`'s walk). Vracíme jen sub-strany +
+// napojovací konektory.
+
+function splitChildrenByIndex(children) {
+  const n = children.length;
+  const base = Math.floor(n / 3);
+  const rem = n - base * 3;
+  let s1 = base, fwd = base, s2 = base;
+  if (rem === 1) fwd += 1;
+  else if (rem === 2) { s1 += 1; fwd += 1; }
+  return [
+    children.slice(0, s1),
+    children.slice(s1, s1 + fwd),
+    children.slice(s1 + fwd),
+  ];
+}
+
+function occupiedCells(g) {
+  const occ = new Set();
+  for (const k of g.conn.keys()) occ.add(k);
+  for (const node of g.nodes) {
+    for (let i = 0; i < node.name.length; i++) {
+      occ.add(ckey(node.row, node.col + i));
+    }
+  }
+  return occ;
+}
+
+function bodyCollides(occ, body, dRow, dCol) {
+  for (const k of body.conn.keys()) {
+    const [r, c] = k.split('|').map(Number);
+    if (occ.has(ckey(r + dRow, c + dCol))) return true;
+  }
+  for (const node of body.nodes) {
+    for (let i = 0; i < node.name.length; i++) {
+      if (occ.has(ckey(node.row + dRow, node.col + dCol + i))) return true;
+    }
+  }
+  return false;
+}
+
+// Posune `body` od `(baseRow, baseCol)` ve směru `axis` dokud nepřestane kolidovat
+// s obsazenými buňkami v `dst`. Max 30 iterací (poté vrátí poslední pokus).
+function placeWithoutCollision(dst, body, baseRow, baseCol, axis) {
+  const occ = occupiedCells(dst);
+  let dRow = baseRow, dCol = baseCol;
+  for (let i = 0; i < 30; i++) {
+    if (!bodyCollides(occ, body, dRow, dCol)) return { dRow, dCol };
+    if (axis === 'row-down') dRow++;
+    else if (axis === 'col-right') dCol++;
+    else if (axis === 'col-left') dCol--;
+    else dRow++;
+  }
+  return { dRow, dCol };
+}
+
+function layoutSubBranches(parentNode, parentPath) {
+  const g = makeGrid();
+  const nameLen = parentNode.name.length;
+  // Trunk pod jménem padá přibližně do středu — pro lichý počet znaků přesně na střed,
+  // pro sudý zaokrouhleno dolů (vlevo od skutečného středu).
+  const nameMidCol = Math.floor((nameLen - 1) / 2);
+
+  const [westKids, southKids, eastKids] = splitChildrenByIndex(parentNode.children);
+
+  // SOUTH (forward) -----------------------------------------------------------
+  if (southKids.length) {
+    const sub = layoutBody(southKids, parentPath, 0);
+    // sub.trunk col=0 → lokální col=nameMidCol
+    // sub.first child row=0 → lokální row=2 (1 řádek svislé spojnice mezi jménem a sub-trunkem)
+    const baseDRow = 2;
+    const baseDCol = nameMidCol;
+    const { dRow, dCol } = placeWithoutCollision(g, sub, baseDRow, baseDCol, 'row-down');
+    composeBody(g, sub, dRow, dCol);
+    // Svislá spojnice od jména k sub-trunku
+    for (let r = 1; r < dRow; r++) {
+      gridConn(g, r, dCol, { n: true, s: true });
+    }
+  }
+
+  // EAST ----------------------------------------------------------------------
+  if (eastKids.length) {
+    const sub = layoutBody(eastKids, parentPath, 0);
+    const sb = bbox(sub);
+    const midRow = midGapRow(sub.topRows, sb);
+    const trunkOffset = 4;
+    const baseDRow = 0 - midRow;
+    const baseDCol = nameLen + trunkOffset;
+    const { dRow, dCol } = placeWithoutCollision(g, sub, baseDRow, baseDCol, 'col-right');
+    composeBody(g, sub, dRow, dCol);
+    // Vodorovná spojnice z (0, nameLen) doprava na (0, dCol)
+    for (let c = nameLen; c < dCol; c++) {
+      gridConn(g, 0, c, { e: true, w: true });
+    }
+    gridConn(g, 0, dCol, { w: true });
+    // Vyčistit n/s konce trunku — root spojnice přichází zboku, ne shora/zdola
+    gridClearDirs(g, dRow + sb.minR, dCol, { n: true });
+    gridClearDirs(g, dRow + sb.maxR, dCol, { s: true });
+  }
+
+  // WEST ----------------------------------------------------------------------
+  if (westKids.length) {
+    const sub = layoutBody(westKids, parentPath, 0);
+    flipBodyHorizontal(sub);
+    const sb = bbox(sub);
+    const midRow = midGapRow(sub.topRows, sb);
+    const trunkOffset = 4;
+    const baseDRow = 0 - midRow;
+    // sub po flipH: trunk je na sb.maxC; chceme ho na lokální col = -trunkOffset
+    const baseDCol = -trunkOffset - sb.maxC;
+    const { dRow, dCol } = placeWithoutCollision(g, sub, baseDRow, baseDCol, 'col-left');
+    composeBody(g, sub, dRow, dCol);
+    const trunkCol = dCol + sb.maxC;
+    // Vodorovná spojnice z (0, -1) doleva na (0, trunkCol)
+    for (let c = -1; c > trunkCol; c--) {
+      gridConn(g, 0, c, { e: true, w: true });
+    }
+    gridConn(g, 0, trunkCol, { e: true });
+    gridClearDirs(g, dRow + sb.minR, trunkCol, { n: true });
+    gridClearDirs(g, dRow + sb.maxR, trunkCol, { s: true });
+  }
+
   return g;
 }
 
@@ -262,14 +413,14 @@ export function buildMindmap(tree, basePath = '') {
   // dál od rootu, když je horizontální větev vyšší než 1 řádek na stranu.
   let eastInfo = null, westInfo = null;
   if (q.east.length) {
-    const body = layoutBody(q.east, basePath);
+    const body = layoutBody(q.east, basePath, 1, true);
     const bb = bbox(body);
     const midRow = midGapRow(body.topRows, bb);
     const dRow = rootRow - midRow;
     eastInfo = { body, bb, dRow, topRow: dRow + bb.minR, bottomRow: dRow + bb.maxR };
   }
   if (q.west.length) {
-    const body = layoutBody(q.west, basePath);
+    const body = layoutBody(q.west, basePath, 1, true);
     // flip nemění řádky, jen sloupce, takže midRow lze spočítat až po
     flipBodyHorizontal(body);
     const bb = bbox(body);
@@ -288,7 +439,7 @@ export function buildMindmap(tree, basePath = '') {
 
   // SOUTH ---------------------------------------------------------------
   if (q.south.length) {
-    const body = layoutBody(q.south, basePath);
+    const body = layoutBody(q.south, basePath, 1, true);
     composeBody(g, body, southStart, 0);
     for (let r = rootRow + 1; r < southStart; r++) {
       gridConn(g, r, 0, { n: true, s: true });
@@ -297,7 +448,7 @@ export function buildMindmap(tree, basePath = '') {
 
   // NORTH ---------------------------------------------------------------
   if (q.north.length) {
-    const body = layoutBody(q.north, basePath);
+    const body = layoutBody(q.north, basePath, 1, true);
     flipBodyVertical(body);
     const bb = bbox(body);
     const dRow = northEnd - bb.maxR;
