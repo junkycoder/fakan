@@ -418,6 +418,28 @@ button {
   padding: 0;
 }
 
+/* Strom adresáře v panelu — statický ASCII tree, inline texts (žádný transform). */
+.src-tree {
+  margin: 0;
+  padding: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--line);
+  background: transparent;
+  white-space: pre;
+  overflow: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+.src-tree .n         { color: var(--fg); }
+.src-tree .n--root   { color: var(--fg); font-weight: 700; }
+.src-tree .n--dir    { color: var(--c-blue); }
+.src-tree .n--doc    { color: var(--c-orange); }
+.src-tree .n--code   { color: var(--c-green); }
+.src-tree .n--other  { color: var(--muted); }
+.src-tree .n--empty  { color: var(--muted); opacity: 0.55; }
+
 .panel__note {
   margin: 0;
   padding: 12px;

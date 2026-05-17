@@ -737,14 +737,59 @@ function pathLabel(node) {
   return '~/' + (node.type === 'dir' ? `${p}/` : p);
 }
 
+// Rendering ASCII stromu pro panel (statický pre s inline node spans).
+// Reuse char-grid logiky z buildMindmap → renderGrid, ale s texty inline ve <pre>.
+function renderTreeInlineHTML(grid) {
+  const bb = bbox(grid);
+  const rows = [];
+  for (let r = 0; r < bb.height; r++) rows.push(new Array(bb.width).fill(' '));
+  for (const [k, d] of grid.conn) {
+    const [r, c] = k.split('|').map(Number);
+    rows[r - bb.minR][c - bb.minC] = charForDirs(d);
+  }
+  for (const node of grid.nodes) {
+    const localR = node.row - bb.minR;
+    const localC = node.col - bb.minC;
+    for (let i = 0; i < node.name.length; i++) rows[localR][localC + i] = node.name[i];
+  }
+  const nodesByRow = new Map();
+  for (const n of grid.nodes) {
+    const r = n.row - bb.minR;
+    if (!nodesByRow.has(r)) nodesByRow.set(r, []);
+    nodesByRow.get(r).push({ ...n, localCol: n.col - bb.minC });
+  }
+  for (const arr of nodesByRow.values()) arr.sort((a, b) => a.localCol - b.localCol);
+  const html = [];
+  for (let r = 0; r < bb.height; r++) {
+    const arr = nodesByRow.get(r) || [];
+    let cursor = 0;
+    const line = rows[r];
+    let out = '';
+    for (const n of arr) {
+      out += escapeHtml(line.slice(cursor, n.localCol).join(''));
+      out += `<span class="n ${nodeClass(n)}">${escapeHtml(n.name)}</span>`;
+      cursor = n.localCol + n.name.length;
+    }
+    out += escapeHtml(line.slice(cursor).join(''));
+    html.push(out);
+  }
+  return html.join('\n');
+}
+
+function renderDirTree(dirNode) {
+  const sub = findSubtree(originalTree, dirNode.path);
+  if (!sub) return '<p class="panel__note empty">Strom nenalezen.</p>';
+  const grid = buildMindmap(sub, dirNode.path);
+  return `<pre class="src-tree">${renderTreeInlineHTML(grid)}</pre>`;
+}
+
 function sourceBody(node) {
   if (node.type === 'root') {
     return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
   }
   if (node.type === 'dir') {
-    return node.hasChildren
-      ? '<p class="panel__note">Adresář — rozbalte uzly v mindmapě.</p>'
-      : '<p class="panel__note empty">Zatím prázdné.</p>';
+    if (!node.hasChildren) return '<p class="panel__note empty">Zatím prázdné.</p>';
+    return renderDirTree(node);
   }
   const raw = node.raw != null ? node.raw : (node.content || '');
   if (!raw) {
