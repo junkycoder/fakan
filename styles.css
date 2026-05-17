@@ -111,12 +111,22 @@ button {
 
 /* node labels — různě barevné podle typu */
 .map .n      { color: var(--fg); }
-.map .n--root { color: var(--fg); font-weight: 600; }
+.map .n--root { color: var(--fg); font-weight: 700; font-size: 1.25em; }
 .map .n--dir { color: var(--c-blue); }
 .map .n--doc { color: var(--c-orange); }
 .map .n--code { color: var(--c-green); }
 .map .n--other { color: var(--muted); }
-.map .n--empty { color: var(--muted); opacity: 0.6; }
+.map .n--empty { color: var(--muted); opacity: 0.55; }
+
+/* hloubková hierarchie — slabší weight + opacita pro vzdálenější úrovně */
+.map .n--depth-1 { font-weight: 600; }
+.map .n--depth-2 { opacity: 0.95; }
+.map .n--depth-3 { opacity: 0.82; font-weight: 400; }
+.map .n--depth-4 { opacity: 0.7; font-weight: 400; }
+.map .n--depth-5 { opacity: 0.6; font-weight: 400; }
+
+/* fokus + aktivní v mindmapě = tučné žluté, bez outline */
+.map .n--focus { color: var(--c-yellow); font-weight: 700; opacity: 1; }
 
 /* --- klikatelné překryvy nad názvy uzlů ----------------------------------- */
 
@@ -137,16 +147,13 @@ button {
   padding: 0 2px;
   margin: 0 -2px;
 }
-.hit:hover { background: color-mix(in oklab, var(--c-yellow) 30%, transparent); }
+.hit:hover { background: color-mix(in oklab, var(--c-yellow) 22%, transparent); }
 .hit:focus-visible {
   outline: 2px solid var(--c-blue);
   outline-offset: 1px;
 }
-.hit--active { background: color-mix(in oklab, var(--c-yellow) 45%, transparent); }
-.hit--focus  {
-  outline: 1px solid var(--c-yellow);
-  outline-offset: 2px;
-}
+/* fokus / aktivní stav řešen barvou + tučným písmem na .n--focus uvnitř .map */
+.hit--active, .hit--focus { background: transparent; outline: none; }
 
 /* --- spodní navigace ----------------------------------------------------- */
 
@@ -244,7 +251,7 @@ button {
 }
 .nav__tab.is-active {
   color: var(--c-yellow);
-  border-color: var(--c-yellow);
+  font-weight: 700;
 }
 .nav__tab:hover {
   color: var(--fg);
@@ -294,12 +301,11 @@ button {
 .panel--preview { width: 300px; height: 220px; }
 .panel--max { resize: none; }
 
-.panel.is-active { border-color: var(--c-yellow); }
-.panel.is-active .panel__head {
-  border-bottom-color: var(--c-yellow);
+/* aktivní okno: jen tučné žluté písmo v hlavičce, bez border outline */
+.panel.is-active .panel__path {
   color: var(--c-yellow);
+  font-weight: 700;
 }
-.panel.is-active .panel__path { color: var(--c-yellow); }
 
 .panel__head {
   display: flex;

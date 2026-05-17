@@ -72,13 +72,21 @@ function layoutBody(children, pathPrefix = '', sepTop = 1) {
     const n = subs.length;
     for (let i = 0; i < n; i++) {
       // prázdný řádek mezi top-level skupinami (jen depth 0, ne před prvním dítětem)
+      // a jen pokud alespoň jeden ze sousedů má potomky — nemá smysl dělat mezeru
+      // mezi řadou listů (např. .gitignore / index.html / script.js / styles.css na východě)
       if (depth === 0 && i > 0 && sepTop > 0) {
-        for (let s = 0; s < sepTop; s++) {
-          const blank = cursor++;
-          for (let j = 0; j < prefix.length; j++) {
-            if (prefix[j] === '|') gridConn(g, blank, j, { n: true, s: true });
+        const prev = subs[i - 1];
+        const curr = subs[i];
+        const groupy = (prev.children && prev.children.length) ||
+                       (curr.children && curr.children.length);
+        if (groupy) {
+          for (let s = 0; s < sepTop; s++) {
+            const blank = cursor++;
+            for (let j = 0; j < prefix.length; j++) {
+              if (prefix[j] === '|') gridConn(g, blank, j, { n: true, s: true });
+            }
+            gridConn(g, blank, prefix.length, { n: true, s: true });
           }
-          gridConn(g, blank, prefix.length, { n: true, s: true });
         }
       }
 
@@ -217,10 +225,10 @@ function distribute(children) {
 
 // --- celkový build mindmapy --------------------------------------------------
 
-function buildMindmap(tree) {
+function buildMindmap(tree, basePath = '') {
   const g = makeGrid();
 
-  // Root
+  // Root (vizuální — může to být reálný kořen i jakákoli složka jako virtuální root)
   const rootName = tree.name;
   const rootLen = rootName.length;
   const rootCol = -Math.floor(rootLen / 2);
@@ -229,7 +237,7 @@ function buildMindmap(tree) {
   gridNode(g, rootRow, rootCol, {
     name: rootName,
     type: 'root',
-    path: '',
+    path: basePath,
     hasChildren: !!(tree.children && tree.children.length),
   });
 
@@ -239,14 +247,14 @@ function buildMindmap(tree) {
   // dál od rootu, když je horizontální větev vyšší než 1 řádek na stranu.
   let eastInfo = null, westInfo = null;
   if (q.east.length) {
-    const body = layoutBody(q.east, '');
+    const body = layoutBody(q.east, basePath);
     const bb = bbox(body);
     const centerOffset = Math.floor((bb.height - 1) / 2);
     const dRow = rootRow - centerOffset;
     eastInfo = { body, bb, dRow, topRow: dRow + bb.minR, bottomRow: dRow + bb.maxR };
   }
   if (q.west.length) {
-    const body = layoutBody(q.west, '');
+    const body = layoutBody(q.west, basePath);
     flipBodyHorizontal(body);
     const bb = bbox(body);
     const centerOffset = Math.floor((bb.height - 1) / 2);
@@ -264,7 +272,7 @@ function buildMindmap(tree) {
 
   // SOUTH ---------------------------------------------------------------
   if (q.south.length) {
-    const body = layoutBody(q.south, '');
+    const body = layoutBody(q.south, basePath);
     composeBody(g, body, southStart, 0);
     for (let r = rootRow + 1; r < southStart; r++) {
       gridConn(g, r, 0, { n: true, s: true });
@@ -273,7 +281,7 @@ function buildMindmap(tree) {
 
   // NORTH ---------------------------------------------------------------
   if (q.north.length) {
-    const body = layoutBody(q.north, '');
+    const body = layoutBody(q.north, basePath);
     flipBodyVertical(body);
     const bb = bbox(body);
     const dRow = northEnd - bb.maxR;
@@ -362,7 +370,8 @@ function renderGrid(grid) {
       // text před uzlem (jen konektory)
       out += escapeHtml(line.slice(cursor, n.localCol).join(''));
       const cls = nodeClass(n);
-      out += `<span class="n ${cls}">${escapeHtml(n.name)}</span>`;
+      const pathAttr = n.path != null ? ` data-node-path="${escapeHtml(n.path || '/')}"` : '';
+      out += `<span class="n ${cls}"${pathAttr}>${escapeHtml(n.name)}</span>`;
       cursor = n.localCol + n.name.length;
     }
     out += escapeHtml(line.slice(cursor).join(''));
@@ -373,12 +382,21 @@ function renderGrid(grid) {
 }
 
 function nodeClass(n) {
-  if (n.type === 'root') return 'n--root';
-  if (n.type === 'dir') return n.hasChildren ? 'n--dir' : 'n--dir n--empty';
-  if (n.kind === 'md') return 'n--doc';
-  const fn = (n.filename || n.name || '').toLowerCase();
-  if (/\.(html|css|js|sh|py|json|ts|tsx)$/.test(fn)) return 'n--code';
-  return 'n--other';
+  let base;
+  if (n.type === 'root') {
+    base = 'n--root n--depth-0';
+  } else {
+    const depth = (n.path || '').split('/').filter(Boolean).length;
+    base = `n--depth-${Math.min(depth, 5)}`;
+    if (n.type === 'dir') base += n.hasChildren ? ' n--dir' : ' n--dir n--empty';
+    else if (n.kind === 'md') base += ' n--doc';
+    else {
+      const fn = (n.filename || n.name || '').toLowerCase();
+      if (/\.(html|css|js|sh|py|json|ts|tsx)$/.test(fn)) base += ' n--code';
+      else base += ' n--other';
+    }
+  }
+  return base;
 }
 
 function escapeHtml(s) {
@@ -573,9 +591,91 @@ function renderMarkdown(md) {
 let mainPanel = null;          // { element, node, path, mode, isMax, savedStyles }
 const previewPanels = new Map(); // path → panel
 let activePanel = null;          // okno s yellow headerem
+let followerPanel = null;        // náhled, který sleduje šipkový focus
+let lastFollowerStyles = null;   // pozice/velikost zachovaná mezi instancemi followera
 let panelZ = 100;
 let panelNavListener = null;     // callback do nav re-renderu
 let treeNodes = [];              // všechny uzly, pro sourozeneckou auto-otevírku
+
+// --- re-rooting + tree index (module-level, aktualizováno při rebuild) -------
+let originalTree = null;       // celý strom načtený při bootu
+let currentRootPath = '';      // path, který je momentálně středem mindmapy
+let currentBbox = null;        // bbox aktuálního renderu (pro vp.center)
+let viewportApi = null;        // { center, panToNode, ensureVisible }
+let byPath = new Map();        // path → node (pro klávesnici, panely, recenter)
+let childrenByPath = new Map();
+let topQuadrant = new Map();   // top-level path → quadrant
+
+function topLevelAncestor(nodePath, rootPath) {
+  let p = nodePath;
+  while (true) {
+    const parts = p.split('/');
+    const parent = parts.slice(0, -1).join('/');
+    if (parent === rootPath) return p;
+    if (!parent) return p;
+    p = parent;
+  }
+}
+
+function buildTreeIndex(nodes) {
+  byPath.clear();
+  childrenByPath.clear();
+  topQuadrant.clear();
+  for (const n of nodes) byPath.set(n.path || '', n);
+  for (const n of nodes) {
+    if (n.type === 'root') continue;
+    const parts = n.path.split('/');
+    const parentPath = parts.slice(0, -1).join('/');
+    if (!childrenByPath.has(parentPath)) childrenByPath.set(parentPath, []);
+    childrenByPath.get(parentPath).push(n);
+  }
+  // top-level vůči aktuálnímu středu = parent == currentRootPath
+  const tops = childrenByPath.get(currentRootPath) || [];
+  for (const n of tops) topQuadrant.set(n.path, classify(n));
+  // přiřaď kvadrant všem potomkům (zděděný od top-level předka)
+  for (const n of nodes) {
+    if (n.type === 'root') { n.quadrant = null; continue; }
+    const top = topLevelAncestor(n.path, currentRootPath);
+    n.quadrant = topQuadrant.get(top);
+  }
+}
+
+function findSubtree(tree, path) {
+  if (!path) return tree;
+  const parts = path.split('/');
+  let cur = tree;
+  for (const p of parts) {
+    if (!cur.children) return null;
+    cur = cur.children.find((c) => c.name === p);
+    if (!cur) return null;
+  }
+  return cur;
+}
+
+function rebuildMindmap(focusPath) {
+  if (!originalTree) return;
+  const sub = findSubtree(originalTree, currentRootPath);
+  if (!sub) return;
+  const grid = buildMindmap(sub, currentRootPath);
+  const map = document.getElementById('map');
+  const hits = document.getElementById('hits');
+  currentBbox = paint(map, hits, grid);
+  treeNodes = grid.nodes;
+  buildTreeIndex(grid.nodes);
+  const rootNode = grid.nodes.find((n) => n.type === 'root');
+  const target = focusPath != null
+    ? (byPath.get(focusPath) || rootNode)
+    : rootNode;
+  if (target) focusNode(target);
+  if (viewportApi) {
+    requestAnimationFrame(viewportApi.center);
+  }
+}
+
+function recenter(path) {
+  currentRootPath = path || '';
+  rebuildMindmap();
+}
 
 function allPanels() {
   const out = [];
@@ -824,6 +924,59 @@ function openPreview(node) {
   return panel;
 }
 
+// preview, který sleduje focus (otevřený mezerníkem, měněný šipkami)
+function openAsFollower(node) {
+  const path = node.path || '/';
+
+  // už je follower na tomhle uzlu? jen do popředí
+  if (followerPanel && followerPanel.path === path) {
+    bringToFront(followerPanel.element);
+    setActive(followerPanel);
+    return;
+  }
+
+  // zavři předchozího followera a zapamatuj si jeho pozici/velikost
+  if (followerPanel) {
+    const el = followerPanel.element;
+    lastFollowerStyles = {
+      left: el.style.left, top: el.style.top,
+      right: el.style.right, bottom: el.style.bottom,
+      width: el.style.width, height: el.style.height,
+    };
+    closePanel(followerPanel);
+  }
+
+  // pokud je uzel už otevřený jako běžný preview, povýším ho na followera
+  const existing = previewPanels.get(path);
+  if (existing) {
+    followerPanel = existing;
+    bringToFront(existing.element);
+    setActive(existing);
+    return;
+  }
+
+  // jinak vyrobím nový preview a označím jako follower
+  const panel = createPanel(node, 'preview');
+  if (lastFollowerStyles) {
+    const s = lastFollowerStyles;
+    if (s.left) panel.element.style.left = s.left;
+    if (s.top) panel.element.style.top = s.top;
+    if (s.right) panel.element.style.right = s.right;
+    if (s.bottom) panel.element.style.bottom = s.bottom;
+    if (s.width) panel.element.style.width = s.width;
+    if (s.height) panel.element.style.height = s.height;
+  } else {
+    positionPanel(panel);
+  }
+  document.getElementById('panels').appendChild(panel.element);
+  setupPanelInteractions(panel);
+  bringToFront(panel.element);
+  previewPanels.set(path, panel);
+  followerPanel = panel;
+  if (panelNavListener) panelNavListener();
+  setActive(panel);
+}
+
 function openSiblingFiles(node) {
   if (!node.path || node.type === 'root') return;
   const parts = node.path.split('/');
@@ -841,6 +994,7 @@ function closePanel(panel) {
   panel.element.remove();
   if (panel === mainPanel) mainPanel = null;
   else previewPanels.delete(panel.path);
+  if (panel === followerPanel) followerPanel = null;
   if (activePanel === panel) {
     activePanel = null;
     // aktivuj nejvyšší zbylý
@@ -861,14 +1015,14 @@ function renderNav(grid, vp) {
   const dropdown = document.getElementById('nav-dropdown');
   const tabs = document.getElementById('nav-tabs');
 
-  // sekce v dropdown (top-level dirs)
-  const topDirs = grid.nodes.filter((n) => n.type === 'dir' && n.path && !n.path.includes('/'));
+  // sekce v dropdown — vždy top-level dirs SKUTEČNÉHO kořene (i po recenter)
+  const topDirs = (originalTree?.children || []).filter((c) => c.type === 'dir');
   dropdown.innerHTML = '';
   for (const d of topDirs) {
     const a = document.createElement('a');
     a.className = 'nav__section';
     a.href = '#';
-    a.dataset.path = d.path;
+    a.dataset.path = d.name;
     a.textContent = d.name;
     dropdown.appendChild(a);
   }
@@ -907,16 +1061,16 @@ function renderNav(grid, vp) {
   document.getElementById('nav').addEventListener('click', (e) => {
     const homeBtn = e.target.closest('[data-home-btn]');
     if (homeBtn) {
-      const root = grid.nodes.find((n) => n.type === 'root');
-      if (root) { focusNode(root); vp.panToNode(root); openMain(root); }
+      // ~/ = vrať mindmapu na skutečný kořen
+      recenter('');
       return;
     }
     const section = e.target.closest('.nav__section');
     if (section) {
       e.preventDefault();
       const path = section.dataset.path;
-      const node = grid.nodes.find((n) => (n.path || '') === path);
-      if (node) { focusNode(node); vp.panToNode(node); openMain(node); }
+      // sekce → recenter na tu složku (stane se novým středem)
+      recenter(path);
       return;
     }
     const tabClose = e.target.closest('.nav__tab-close');
@@ -946,10 +1100,14 @@ let focusedPath = '';
 
 function focusNode(node) {
   focusedPath = node.path || '';
+  // .hit (a11y / pointer target) — beze stylu, jen pro skripty
   document.querySelectorAll('.hit--focus').forEach((el) => el.classList.remove('hit--focus'));
-  const sel = `.hit[data-path="${cssEscapePath(focusedPath || '/')}"]`;
-  const el = document.querySelector(sel);
-  if (el) el.classList.add('hit--focus');
+  const hit = document.querySelector(`.hit[data-path="${cssEscapePath(focusedPath || '/')}"]`);
+  if (hit) hit.classList.add('hit--focus');
+  // vizuální focus = bold žluté písmo v <pre class="map">
+  document.querySelectorAll('.map .n--focus').forEach((el) => el.classList.remove('n--focus'));
+  const span = document.querySelector(`.map [data-node-path="${cssEscapePath(focusedPath || '/')}"]`);
+  if (span) span.classList.add('n--focus');
 }
 
 function cssEscapePath(p) {
@@ -989,30 +1147,34 @@ function findNeighbor(current, direction, nodes) {
   return best;
 }
 
-function setupKeyboard(grid, vp) {
-  // strom: parent ← path, children ← path; siblings = stejný parent
-  const byPath = new Map();
-  const childrenByPath = new Map();
-  const topQuadrant = new Map(); // path → 'north'|'south'|'east'|'west'
-  for (const n of grid.nodes) byPath.set(n.path || '', n);
-  for (const n of grid.nodes) {
-    if (n.type === 'root') continue;
-    const parts = n.path.split('/');
-    const parentPath = parts.slice(0, -1).join('/');
-    if (!childrenByPath.has(parentPath)) childrenByPath.set(parentPath, []);
-    childrenByPath.get(parentPath).push(n);
-    if (parts.length === 1) topQuadrant.set(n.path, classify(n));
-  }
-  // přiřaď kvadrant všem potomkům (zděděný z top-level)
-  for (const n of grid.nodes) {
-    if (n.type === 'root') { n.quadrant = null; continue; }
-    n.quadrant = topQuadrant.get(n.path.split('/')[0]);
-  }
+function switchToPanel(panel) {
+  if (!panel) return;
+  bringToFront(panel.element);
+  setActive(panel);
+}
+
+function cycleTab(direction) {
+  const all = allPanels();
+  if (!all.length) return;
+  const idx = activePanel ? all.indexOf(activePanel) : -1;
+  let n = (idx < 0 ? 0 : idx + direction);
+  if (n < 0) n = all.length - 1;
+  if (n >= all.length) n = 0;
+  switchToPanel(all[n]);
+}
+
+function setupKeyboard(_unused, vp) {
+  // tree index je module-level (byPath, childrenByPath, topQuadrant);
+  // aktualizuje ho buildTreeIndex() volaný z bootu i z rebuildMindmap.
 
   const move = (current, action) => {
     if (action === 'parent') {
       const parts = (current.path || '').split('/');
       const parentPath = parts.slice(0, -1).join('/');
+      // pokud rodič je nad současným virtuálním rootem, vrať virtuální root
+      if (currentRootPath && parentPath.length < currentRootPath.length) {
+        return byPath.get(currentRootPath);
+      }
       return byPath.get(parentPath);
     }
     if (action === 'child') {
@@ -1024,8 +1186,8 @@ function setupKeyboard(grid, vp) {
       const parts = current.path.split('/');
       const parentPath = parts.slice(0, -1).join('/');
       let sibs = childrenByPath.get(parentPath) || [];
-      // top-level děti: omezit na stejný kvadrant
-      if (parts.length === 1) {
+      // top-level děti (rodič = currentRootPath): omezit na stejný kvadrant
+      if (parentPath === currentRootPath) {
         const q = current.quadrant;
         sibs = sibs.filter((s) => topQuadrant.get(s.path) === q);
       }
@@ -1037,10 +1199,9 @@ function setupKeyboard(grid, vp) {
     return null;
   };
 
-  // pro root: šipka → kvadrant prvního top-level dítěte
   const rootQuadrantArrow = { up: 'north', down: 'south', left: 'west', right: 'east' };
   const goToQuadrant = (q) => {
-    const topLevels = childrenByPath.get('') || [];
+    const topLevels = childrenByPath.get(currentRootPath) || [];
     return topLevels.find((n) => topQuadrant.get(n.path) === q);
   };
 
@@ -1057,6 +1218,37 @@ function setupKeyboard(grid, vp) {
     const tgt = e.target;
     const tag = tgt && tgt.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (tgt && tgt.isContentEditable)) return;
+
+    // Mac: Cmd+Shift+*, Win: Ctrl+Shift+* — okenní zkratky
+    const mod = e.metaKey || e.ctrlKey;
+    if (mod && e.shiftKey) {
+      if (e.code === 'KeyW') {
+        e.preventDefault();
+        if (activePanel) closePanel(activePanel);
+        return;
+      }
+      if (e.code === 'BracketRight') { e.preventDefault(); cycleTab(1); return; }
+      if (e.code === 'BracketLeft')  { e.preventDefault(); cycleTab(-1); return; }
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        if (activePanel) toggleMax(activePanel);
+        return;
+      }
+      if (e.code === 'KeyN') {
+        e.preventDefault();
+        const node = byPath.get(focusedPath);
+        if (node) openPreview(node);
+        return;
+      }
+      const dm = e.code.match(/^Digit([1-9])$/);
+      if (dm) {
+        e.preventDefault();
+        const all = allPanels();
+        switchToPanel(all[Number(dm[1]) - 1]);
+        return;
+      }
+      // jiné mod+shift kombinace propustíme prohlížeči
+    }
 
     if (e.key === '0') { vp.center(); return; }
 
@@ -1079,16 +1271,35 @@ function setupKeyboard(grid, vp) {
       if (next) {
         focusNode(next);
         vp.ensureVisible(next);
+        // pokud běží follower náhled, posuň ho na nový focus
+        if (followerPanel) openAsFollower(next);
       }
       return;
     }
 
-    if (e.key === 'Enter' || e.key === ' ') {
-      const node = grid.nodes.find((n) => (n.path || '') === focusedPath);
+    if (e.key === 'Enter') {
+      const node = byPath.get(focusedPath);
+      if (!node) return;
+      e.preventDefault();
+      // Shift+Enter na adresáři = ten se stane novým středem (recenter)
+      if (e.shiftKey && node.type === 'dir') {
+        recenter(node.path);
+        return;
+      }
+      openMain(node);
+      return;
+    }
+
+    if (e.key === ' ') {
+      const node = byPath.get(focusedPath);
       if (node) {
         e.preventDefault();
-        if (e.metaKey || e.ctrlKey) openPreview(node);
-        else openMain(node);
+        // druhý mezerník na stejném uzlu zavře follower
+        if (followerPanel && followerPanel.path === (node.path || '/')) {
+          closePanel(followerPanel);
+        } else {
+          openAsFollower(node);
+        }
       }
       return;
     }
@@ -1108,18 +1319,25 @@ async function boot() {
   const res = await fetch(TREE_URL, { cache: 'no-cache' });
   if (!res.ok) throw new Error(`tree.json: ${res.status}`);
   const tree = await res.json();
+  originalTree = tree;
+  currentRootPath = '';
 
   const canvas = document.getElementById('canvas');
   const viewport = document.getElementById('viewport');
   const map = document.getElementById('map');
   const hits = document.getElementById('hits');
 
-  const grid = buildMindmap(tree);
-  const bb = paint(map, hits, grid);
-  const rootNode = grid.nodes.find((n) => n.type === 'root');
+  const grid = buildMindmap(tree, '');
+  currentBbox = paint(map, hits, grid);
   treeNodes = grid.nodes;
+  buildTreeIndex(grid.nodes);
+  const rootNode = grid.nodes.find((n) => n.type === 'root');
 
-  const vp = setupViewport(canvas, viewport, () => ({ bb, rootNode }));
+  const vp = setupViewport(canvas, viewport, () => {
+    const root = byPath.get(currentRootPath) || rootNode;
+    return { bb: currentBbox, rootNode: root };
+  });
+  viewportApi = vp;
   requestAnimationFrame(vp.center);
   window.addEventListener('resize', vp.center);
 
@@ -1131,7 +1349,7 @@ async function boot() {
     const el = e.target.closest('.hit');
     if (!el) return;
     const path = el.dataset.path;
-    const node = grid.nodes.find((n) => (n.path || '') === (path === '/' ? '' : path));
+    const node = byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
     if (e.metaKey || e.ctrlKey) openPreview(node);
