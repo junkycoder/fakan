@@ -27,23 +27,31 @@ function detectLang(filename) {
   if (fn.endsWith('.js') || fn.endsWith('.mjs') || fn.endsWith('.cjs') || fn.endsWith('.ts') || fn.endsWith('.tsx') || fn.endsWith('.jsx')) return 'js';
   if (fn.endsWith('.css') || fn.endsWith('.scss') || fn.endsWith('.sass') || fn.endsWith('.less')) return 'css';
   if (fn.endsWith('.html') || fn.endsWith('.htm') || fn.endsWith('.svg') || fn.endsWith('.xml')) return 'html';
-  if (fn.endsWith('.json') || fn.endsWith('.jsonc')) return 'json';
+  // web templaty / SFC — HTML s embedded jiným jazykem; bližší aproximace než plain
+  if (fn.endsWith('.erb') || fn.endsWith('.ejs') || fn.endsWith('.hbs') || fn.endsWith('.handlebars') || fn.endsWith('.mustache') || fn.endsWith('.njk') || fn.endsWith('.jinja') || fn.endsWith('.jinja2') || fn.endsWith('.twig') || fn.endsWith('.liquid')) return 'html';
+  if (fn.endsWith('.vue') || fn.endsWith('.svelte') || fn.endsWith('.astro')) return 'html';
+  if (fn.endsWith('.json') || fn.endsWith('.jsonc') || fn.endsWith('.json5')) return 'json';
   if (fn.endsWith('.sh') || fn.endsWith('.bash') || fn.endsWith('.zsh') || fn.endsWith('.fish')) return 'sh';
   if (fn.endsWith('.py') || fn.endsWith('.pyw')) return 'py';
   if (fn.endsWith('.yml') || fn.endsWith('.yaml')) return 'yaml';
   if (fn.endsWith('.toml')) return 'toml';
   if (fn.endsWith('.rb') || fn.endsWith('.rake') || fn === 'gemfile' || fn === 'rakefile' || fn.endsWith('.gemspec')) return 'ruby';
+  if (fn.endsWith('.haml') || fn.endsWith('.slim')) return 'ruby'; // ruby template engines
   if (fn.endsWith('.go')) return 'go';
   if (fn.endsWith('.rs')) return 'rust';
   if (fn.endsWith('.java') || fn.endsWith('.kt') || fn.endsWith('.kts')) return 'java';
+  if (fn.endsWith('.scala') || fn.endsWith('.sc') || fn.endsWith('.groovy') || fn.endsWith('.gradle')) return 'java'; // JVM aproximace
   if (fn.endsWith('.c') || fn.endsWith('.h') || fn.endsWith('.cpp') || fn.endsWith('.hpp') || fn.endsWith('.cc') || fn.endsWith('.cxx') || fn.endsWith('.m') || fn.endsWith('.mm')) return 'c';
   if (fn.endsWith('.php') || fn.endsWith('.phtml')) return 'php';
   if (fn.endsWith('.lua')) return 'lua';
   if (fn.endsWith('.sql')) return 'sql';
   if (fn.endsWith('.swift')) return 'c'; // approximace — keywords se liší, ale operátorová struktura sedí
-  if (fn.endsWith('.dart')) return 'c';
+  if (fn.endsWith('.dart') || fn.endsWith('.zig') || fn.endsWith('.nim')) return 'c';
   if (fn === 'dockerfile' || fn.endsWith('.dockerfile')) return 'sh';
   if (fn === 'makefile' || fn.endsWith('.mk')) return 'sh';
+  // konfiguráky a dotfiles s # komentáři — sh je rozumná aproximace
+  if (fn.endsWith('.ini') || fn.endsWith('.conf') || fn.endsWith('.cfg') || fn.endsWith('.properties') || fn.endsWith('.env')) return 'sh';
+  if (fn === '.env' || fn === '.gitignore' || fn === '.gitattributes' || fn === '.editorconfig' || fn === '.npmrc' || fn === '.nvmrc') return 'sh';
   return 'plain';
 }
 
