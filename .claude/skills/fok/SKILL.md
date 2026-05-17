@@ -1,32 +1,32 @@
 ---
 name: fok
-description: Rychlý záznam časového údaje („už budu", „jsem tam", apod.) do souboru FOK.md. Použij, když uživatel napíše /fok <zpráva> nebo zprávu ve stylu „fok už budu".
+description: Rychle zapsat user-entry do FOK.md (komunikační log mezi sessionemi). Použij když uživatel napíše /fok <zpráva> nebo „fok <zpráva>".
 ---
 
 # /fok
 
-Spec je v [FOK.md](../../../FOK.md). Cíl: rychlý časový záznam ve formátu
+Připoj nový **user-entry** na začátek [FOK.md](../../../FOK.md). FOK.md je log mezi sessionemi (formát + smysl popsán v hlavičce souboru a v [CLAUDE.md](../../../CLAUDE.md)).
 
-```
-2026
-05
-16:20 už budu
-```
+## Postup
 
-…tj. rok, měsíc, čas + krátký vzkaz na nový řádek.
+1. Vezmi text za `/fok ` jako tělo entry.
+2. Získej aktuální datum a čas:
+   ```bash
+   date '+%Y-%m-%d %H:%M'
+   ```
+3. Otevři `FOK.md`, najdi první `---` (oddělovač za header sekcí), za něj **prepend** nový blok:
+   ```markdown
+   ## YYYY-MM-DD HH:MM — user
 
-## Postup (TODO doimplementovat)
+   <zpráva>
 
-1. Z `date` vezmi aktuální rok, měsíc, čas (HH:MM v lokální TZ).
-2. Pokud aktuální `FOK.md` ještě obsahuje původní instrukční text, **přepiš ho** podle pokynu v souboru („nauč se skill a pak tento soubor přepiš na uvedené výše").
-3. Append nový záznam tak, aby:
-   - rok se opakoval jen když se změnil
-   - měsíc se opakoval jen když se změnil
-   - jinak jen `HH:MM zpráva`
-4. Žádné commit / push, jen úprava souboru.
+   ```
+4. Zapiš soubor. **Žádný commit ani push** — uživatel to commitne sám, nebo to spadne do dalšího funkčního celku.
 
-## TODO
+## Pokud user napíše jen `/fok` bez textu
 
-- [ ] Vyřešit grupování po rocích / měsících (algoritmus pro append)
-- [ ] Default zpráva, když uživatel napíše jen `/fok` bez textu
-- [ ] Volitelně: zpětný `--list` / `--last`
+Zeptej se, co má zapsat. Nepiš prázdnou entry.
+
+## Nepiš odpovědi přes skill
+
+Tento skill je čistě pro **user-entry**. Odpověď Claudea (`— claude`) se do FOK.md píše ručně mimo skill, a to jen výjimečně (viz CLAUDE.md).

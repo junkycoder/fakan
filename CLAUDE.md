@@ -10,20 +10,26 @@ Detailní vize, roadmapa a produktové tarify v [README.md](README.md). **Před 
 
 ## FOK.md = komunikační log mezi sessionemi
 
-[FOK.md](FOK.md) **NENÍ** soubor s časovými razítky. Je to logovník, kde si s uživatelem vyměňujeme krátké zprávy mimo session.
+[FOK.md](FOK.md) je logovník, kde **uživatel** zapisuje krátké zadání / poznámky mezi sessionemi (přes skill `/fok <zpráva>` nebo přímo v editoru). **Není** to soubor s časovými razítky.
 
 **Při startu každé nové session**:
-1. Otevři [FOK.md](FOK.md) a najdi všechny entries od posledního `## ... — claude` směrem nahoru.
-2. Ty jsou nové zadání / komentáře od uživatele.
+1. Otevři [FOK.md](FOK.md) a najdi všechny `— user` entries od poslední `— claude` značky (nebo všechny, pokud žádná není).
+2. To jsou nové úkoly / komentáře.
 3. Vyřeš je (jeden po druhém, nebo dohromady — záleží na povaze).
-4. **Zapiš odpověď do FOK.md** nahoru: `## YYYY-MM-DD — claude` + krátký popis co jsi udělal + commit hashe.
+4. **Odpověz v chatu**, ne ve FOK.md. Uživatel chce konverzaci v chatu, FOK je primárně jeho.
 
-Formát:
-- Nejnovější nahoře (prepend nové entries)
-- `## YYYY-MM-DD — claude` nebo `## YYYY-MM-DD — user`
-- Tělo entry: krátce, jako commit message — co se dělo a proč
+**Do FOK.md sám piš jen výjimečně** — když:
+- končí session uprostřed úkolu a chceš nechat status pro další session
+- uživatel řekne „zaloguj to" / „poznamenej si"
+- důležitý milník (např. „nasadili jsme paywall")
 
-User často píše do FOK.md mezi session přes svůj editor (ne přes Claude). Bez tohoto kontextu bys přišel/-la o jeho zadání.
+Formát Claude-entry (když opravdu píšeš):
+```markdown
+## YYYY-MM-DD HH:MM — claude
+
+Krátce co se stalo + commit hashe.
+```
+Vždy **prepend** (nahoru), zachovej časové razítko z `date '+%Y-%m-%d %H:%M'`.
 
 ## Pracovní rytmus
 
