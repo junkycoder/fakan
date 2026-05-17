@@ -397,6 +397,16 @@ button {
 .panel--preview { width: 300px; height: 220px; }
 .panel--max { resize: none; }
 
+/* Na desktopu chceme prostornější okna — víc obsahu bez zbytečného resize. */
+@media (min-width: 1024px) {
+  .panel--main { width: 640px; height: 480px; }
+  .panel--preview { width: 420px; height: 320px; }
+}
+@media (min-width: 1600px) {
+  .panel--main { width: 760px; height: 560px; }
+  .panel--preview { width: 500px; height: 380px; }
+}
+
 /* aktivní okno: jen tučné žluté písmo v hlavičce, bez border outline */
 .panel.is-active .panel__path {
   color: var(--c-yellow);
