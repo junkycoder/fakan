@@ -608,6 +608,32 @@ function renderMarkdown(md) {
   return paras.replace(/ B(\d+) /g, (_, i) => blocks[Number(i)]);
 }
 
+// --- media detekce ----------------------------------------------------------
+// Audio / video / image / pdf — pro panel typu 'rendered' se nabídne přehrávač
+// místo zdrojového vimu (binární data textový editor stejně neumí).
+
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.ogv', '.ogg', '.avi', '.mkv', '.m4v']);
+const AUDIO_EXTS = new Set(['.mp3', '.wav', '.m4a', '.flac', '.aac', '.opus', '.oga']);
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.svg', '.bmp', '.ico']);
+const PDF_EXTS = new Set(['.pdf']);
+
+function fileExt(node) {
+  const n = (node?.filename || node?.name || '').toLowerCase();
+  const i = n.lastIndexOf('.');
+  return i >= 0 ? n.slice(i) : '';
+}
+
+function mediaKind(node) {
+  if (!node || node.type !== 'file') return null;
+  // .ogg může být audio i video — ext-based fallback to audio
+  const ext = fileExt(node);
+  if (VIDEO_EXTS.has(ext) && ext !== '.ogg') return 'video';
+  if (AUDIO_EXTS.has(ext) || ext === '.ogg') return 'audio';
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (PDF_EXTS.has(ext)) return 'pdf';
+  return null;
+}
+
 // --- defaultní mode pro panel ------------------------------------------------
 // MD / HTML / dir-s-index.html se otevírají rovnou v rendered módu.
 // Ostatní spustitelné soubory (např. budoucí .sh / .js v .bin/) otevíráme jako
@@ -616,9 +642,12 @@ function defaultPanelMode(node) {
   if (!node) return 'source';
   if (node.kind === 'web') return 'rendered';
   if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
-  if (node.kind === 'md' && (node.content || '').trim()) return 'rendered';
+  // .md a .html otevíráme v rendered módu i bez načteného obsahu —
+  // panel ho lazy fetchne přes node.path.
+  if (node.kind === 'md') return 'rendered';
   const fn = (node.filename || node.name || '').toLowerCase();
-  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return 'rendered';
+  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && (node.raw || node.path)) return 'rendered';
+  if (mediaKind(node)) return 'rendered';
   return 'source';
 }
 
@@ -836,21 +865,43 @@ function renderedBody(node) {
     const titleAttr = escapeHtml(node.title || node.url || node.name);
     return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${titleAttr}"></iframe>`;
   }
+  const mk = mediaKind(node);
+  if (mk) {
+    // URL musíme vyřešit asynchronně (FSA → blob URL). Vrátíme placeholder
+    // s data-media-mount; panel po insertu zavolá mountMediaIfNeeded.
+    return `<div class="media-mount" data-media-mount data-media-kind="${mk}"></div>`;
+  }
   if (node.kind === 'md' && node.content) {
     return `<div class="md">${renderMarkdown(node.content)}</div>`;
   }
+  if (node.kind === 'md' && node.path) {
+    // Obsah ještě nedorazil — panel ho fetchne a re-renderuje.
+    return `<p class="panel__note empty" data-panel-loading>Načítám…</p>`;
+  }
   const fn = (node.filename || node.name || '').toLowerCase();
-  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) {
-    // self-contained iframe přes srcdoc; sandbox bez allow-same-origin = bezpečné
-    const srcdoc = node.raw
-      .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
+  if (fn.endsWith('.html') || fn.endsWith('.htm')) {
+    // Pokud máme `raw` (lokální složka / GitHub fetch), renderujeme přes srcdoc.
+    // Jinak pro statický deploy iframe stáhne přímo přes path.
+    if (node.raw) {
+      const srcdoc = node.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
+    }
+    if (node.path) {
+      const src = encodeURI(node.path);
+      return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
+    }
   }
   // adresář s index.html: vyrenderuj jeho index.html
   const idx = dirIndexHtml(node);
   if (idx) {
-    const srcdoc = idx.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.name + '/index.html')}"></iframe>`;
+    if (idx.raw) {
+      const srcdoc = idx.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.name + '/index.html')}"></iframe>`;
+    }
+    if (idx.path) {
+      const src = encodeURI(idx.path);
+      return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts" title="${escapeHtml(node.name + '/index.html')}"></iframe>`;
+    }
   }
   if (node.kind === 'md') {
     return `<p class="panel__note empty">Žádný obsah k vyrendrování.</p>`;
@@ -861,16 +912,252 @@ function renderedBody(node) {
 function dirIndexHtml(node) {
   if (!node || node.type !== 'dir') return null;
   const idx = byPath.get((node.path || '') + '/index.html');
-  return idx && idx.raw ? idx : null;
+  if (!idx) return null;
+  // raw může chybět (statický deploy bez inline contentu) — v takovém případě
+  // se použije idx.path přímo v iframe src.
+  return idx;
 }
 
 function canBuild(node) {
   if (node.kind === 'web') return true;
-  if (node.kind === 'md' && node.content && node.content.trim()) return true;
+  // MD a HTML jsou vždy buildable — pokud chybí obsah, panel ho lazy fetchne.
+  if (node.kind === 'md' && (node.content || node.path)) return true;
   const fn = (node.filename || node.name || '').toLowerCase();
-  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && node.raw) return true;
+  if ((fn.endsWith('.html') || fn.endsWith('.htm')) && (node.raw || node.path)) return true;
   if (dirIndexHtml(node)) return true;
+  // media (audio/video/image/pdf) — má kde stáhnout (path / handle / blob)
+  if (mediaKind(node) && (node.path || node._handle || node.raw != null || node.content != null)) return true;
   return false;
+}
+
+// --- node → resolvable URL (pro media + download) ---------------------------
+// Pravidla:
+// - statický deploy (žádný source connected) → node.path je reálná URL
+// - FSA (rootHandle) → node má _handle; blob z handle.getFile()
+// - snapshot (uploadedSnapshot) → file má _file (z File API) nebo raw/content
+// - GitHub (githubSpec) → text v raw; binární media nejsou fetchnutá
+// Vrací Blob (await) — volající si udělá URL.createObjectURL a revoke.
+
+async function nodeFileBlob(node) {
+  if (!node) return null;
+  if (node._handle && typeof node._handle.getFile === 'function') {
+    try { return await node._handle.getFile(); } catch {}
+  }
+  if (node._file instanceof Blob) return node._file;
+  const text = node.raw != null ? node.raw : (node.content != null ? node.content : null);
+  if (text != null) {
+    return new Blob([text], { type: 'text/plain;charset=utf-8' });
+  }
+  // statický deploy — path je fetchovatelný
+  if (node.path && !rootHandle && !uploadedSnapshot && !githubSpec) {
+    try {
+      const res = await fetch(encodeURI(node.path), { cache: 'force-cache' });
+      if (res.ok) return await res.blob();
+    } catch {}
+  }
+  return null;
+}
+
+// Synchronní hint — vrací URL pokud je rovnou fetchovatelná (static deploy /
+// web snapshot). Jinak null → volající musí dotáhnout blob.
+function nodeDirectUrl(node) {
+  if (!node || !node.path) return null;
+  if (node.kind === 'web') return encodeURI(node.path);
+  if (rootHandle || uploadedSnapshot || githubSpec) return null;
+  return encodeURI(node.path);
+}
+
+// --- lazy fetch obsahu file uzlů --------------------------------------------
+// tree.json drží jen strukturu + metadata (title, slug). Tělo souborů se
+// fetchne přes node.path až při otevření panelu. Cache po prvním fetchi.
+
+const _contentFetches = new Map(); // path → Promise
+
+function nodeNeedsLazyContent(node) {
+  if (!node || node.type !== 'file') return false;
+  if (node.kind === 'web') return false; // web uzly renderuje iframe přes path
+  if (!node.path) return false;
+  // potřebujeme fetch dokud nemáme originál v paměti, i kdyby uzel měl
+  // override z localStorage (originál slouží jako baseline pro reset).
+  return node._originalRaw == null;
+}
+
+async function ensureNodeContent(node) {
+  if (!nodeNeedsLazyContent(node)) return;
+  const path = node.path;
+  if (_contentFetches.has(path)) return _contentFetches.get(path);
+  const p = (async () => {
+    try {
+      const res = await fetch(encodeURI(path), { cache: 'force-cache' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      node._originalRaw = text;
+      // pokud LS override už nastavil content/raw, nepřepisujeme ho fetched verzí
+      const hasOverride = node.raw != null || node.content != null;
+      if (!hasOverride) {
+        if (node.kind === 'md') {
+          const [fm, body] = parseFrontmatter(text);
+          if (!node.title) node.title = fm.title || '';
+          if (!node.slug) node.slug = fm.slug || '';
+          node.content = body;
+          node.raw = text;
+        } else {
+          node.content = text;
+          node.raw = text;
+        }
+      }
+    } catch (e) {
+      console.warn('lazy fetch failed', path, e);
+      _contentFetches.delete(path); // dovol retry při dalším otevření
+      throw e;
+    }
+  })();
+  _contentFetches.set(path, p);
+  return p;
+}
+
+function rerenderPanelBody(panel) {
+  if (!panel || !panel.element || !panel.element.isConnected) return;
+  const bodyEl = panel.element.querySelector('[data-panel-body]');
+  if (!bodyEl) return;
+  destroyEditor(panel);
+  revokePanelUrls(panel);
+  bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
+  mountEditorIfNeeded(panel, bodyEl);
+  mountMediaIfNeeded(panel, bodyEl);
+  renderPanelFoot(panel);
+}
+
+function revokePanelUrls(panel) {
+  if (!panel || !panel.objectUrls) return;
+  for (const u of panel.objectUrls) {
+    try { URL.revokeObjectURL(u); } catch {}
+  }
+  panel.objectUrls.length = 0;
+}
+
+// --- media mount (audio / video / image / pdf) ------------------------------
+// Volá se po každém renderedBody. Pokud existuje placeholder s [data-media-mount],
+// vyřeší URL (path nebo blob z handle/file) a nahradí ho odpovídajícím tagem.
+
+async function mountMediaIfNeeded(panel, bodyEl) {
+  const mount = bodyEl.querySelector('[data-media-mount]');
+  if (!mount) return;
+  const kind = mount.dataset.mediaKind;
+  const node = panel.node;
+
+  // 1) Pokud máme přímou URL (statický deploy / web kind), použij ji.
+  let url = nodeDirectUrl(node);
+  // 2) Jinak vyrobit blob URL z handle / file / raw / fetch.
+  if (!url) {
+    try {
+      const blob = await nodeFileBlob(node);
+      if (blob) {
+        url = URL.createObjectURL(blob);
+        panel.objectUrls.push(url);
+      }
+    } catch (e) { console.warn('media blob failed', e); }
+  }
+  // pokud mezitím panel zavřel nebo se re-renderoval, mount už není v DOM
+  if (!mount.isConnected) return;
+  if (!url) {
+    mount.innerHTML = `<p class="panel__note empty">Soubor nelze přehrát: chybí zdrojová data.</p>`;
+    return;
+  }
+  const titleAttr = escapeHtml(node.filename || node.name || '');
+  if (kind === 'video') {
+    mount.innerHTML = `<video class="media-el media-el--video" src="${url}" controls preload="metadata" playsinline title="${titleAttr}"></video>`;
+  } else if (kind === 'audio') {
+    mount.innerHTML = `<audio class="media-el media-el--audio" src="${url}" controls preload="metadata" title="${titleAttr}"></audio>`;
+  } else if (kind === 'image') {
+    mount.innerHTML = `<img class="media-el media-el--image" src="${url}" alt="${titleAttr}" title="${titleAttr}">`;
+  } else if (kind === 'pdf') {
+    // embed funguje líp na mobilu i desktopu než <object>
+    mount.innerHTML = `<embed class="media-el media-el--pdf" src="${url}" type="application/pdf" title="${titleAttr}">`;
+  }
+}
+
+// --- panel footer (info o souboru + download odkaz) -------------------------
+
+function humanSize(bytes) {
+  if (bytes == null || !isFinite(bytes)) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} kB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
+function nodeKindLabel(node) {
+  if (!node) return '';
+  if (node.type === 'root') return 'kořen mindmapy';
+  if (node.type === 'dir') {
+    const n = (node.children || []).length;
+    return n ? `adresář · ${n} položek` : 'prázdný adresář';
+  }
+  const mk = mediaKind(node);
+  if (mk === 'video') return 'video';
+  if (mk === 'audio') return 'audio';
+  if (mk === 'image') return 'obrázek';
+  if (mk === 'pdf') return 'PDF';
+  if (node.kind === 'web') return 'web snapshot';
+  if (node.kind === 'md') return 'markdown';
+  if (node.kind === 'text') return 'text';
+  return fileExt(node).replace('.', '') || 'soubor';
+}
+
+function knownSize(node) {
+  if (!node) return null;
+  if (node._file && typeof node._file.size === 'number') return node._file.size;
+  // text v raw — počet bytů přes Blob (rychlejší a přesnější než TextEncoder)
+  if (typeof node.raw === 'string') return new Blob([node.raw]).size;
+  if (typeof node.content === 'string') return new Blob([node.content]).size;
+  return null;
+}
+
+async function renderPanelFoot(panel) {
+  if (!panel || !panel.element || !panel.element.isConnected) return;
+  const foot = panel.element.querySelector('[data-panel-foot]');
+  if (!foot) return;
+  const node = panel.node;
+  const kindLabel = nodeKindLabel(node);
+  // adresář/root → jen info, žádný download
+  if (!node || node.type !== 'file') {
+    foot.innerHTML = `<span class="panel__foot-info">${escapeHtml(kindLabel)}</span>`;
+    return;
+  }
+  const filename = node.filename || node.name || 'soubor';
+  const sz = knownSize(node);
+  const sizeStr = sz != null ? humanSize(sz) : '';
+  const infoBits = [kindLabel, sizeStr].filter(Boolean).join(' · ');
+
+  // URL pro stažení: přímá (statický deploy / web snapshot) nebo blob
+  let url = nodeDirectUrl(node);
+  let isBlob = false;
+  if (!url) {
+    try {
+      const blob = await nodeFileBlob(node);
+      if (blob) {
+        url = URL.createObjectURL(blob);
+        panel.objectUrls.push(url);
+        isBlob = true;
+      }
+    } catch {}
+  }
+  if (!foot.isConnected) return;
+  if (!url) {
+    foot.innerHTML = `<span class="panel__foot-info">${escapeHtml(infoBits)}</span>`;
+    return;
+  }
+  // single descriptive link = info o souboru + download/share v jednom
+  // (target=_blank na blob URL: prohlížeč nabídne uložení / náhled)
+  const dlAttr = isBlob ? ` download="${escapeHtml(filename)}"` : ` download="${escapeHtml(filename)}"`;
+  foot.innerHTML = `
+    <a class="panel__foot-link" href="${url}"${dlAttr} target="_blank" rel="noopener" title="Stáhnout / sdílet">
+      <span class="panel__foot-link-name">${escapeHtml(filename)}</span>
+      ${infoBits ? `<span class="panel__foot-link-meta">${escapeHtml(infoBits)}</span>` : ''}
+      <span class="panel__foot-link-act" aria-hidden="true">↓</span>
+    </a>
+  `;
 }
 
 function bringToFront(el) {
@@ -904,6 +1191,7 @@ function createPanel(node, variant) {
       </div>
     </header>
     <div class="panel__body" data-panel-body>${initialMode === 'source' ? sourceBody(node) : renderedBody(node)}</div>
+    <footer class="panel__foot" data-panel-foot></footer>
   `;
 
   const panel = {
@@ -914,6 +1202,7 @@ function createPanel(node, variant) {
     mode: initialMode,
     isMax: false,
     savedStyles: null,
+    objectUrls: [],   // blob: URL pro media/download — revokuj v closePanel
   };
   return panel;
 }
@@ -958,7 +1247,12 @@ function saveEditOverride(node, text) {
 }
 
 function applyEditToNode(node, text) {
-  if (node._originalRaw == null) node._originalRaw = node.raw != null ? node.raw : (node.content || '');
+  // _originalRaw nastavujeme jen pokud už máme originál v paměti.
+  // Pro lazy uzly originál dorazí později (ensureNodeContent) — nepřepisujeme
+  // ho prázdným řetězcem, aby reset (`u` v editoru) fungoval správně.
+  if (node._originalRaw == null && (node.raw != null || node.content != null)) {
+    node._originalRaw = node.raw != null ? node.raw : (node.content || '');
+  }
   node.raw = text;
   if (node.kind === 'md') node.content = text;
 }
@@ -976,6 +1270,9 @@ function mountEditorIfNeeded(panel, bodyEl) {
   const host = bodyEl.querySelector('[data-vim-mount]');
   if (!host) return;
   const node = panel.node;
+  // pokud čekáme na lazy fetch, editor mount preskočíme — rerenderPanelBody ho
+  // pozdě dohraje, jakmile obsah dorazí.
+  if (nodeNeedsLazyContent(node)) return;
   const filename = node.filename || node.name || '';
   const initialText = node.raw != null ? node.raw : (node.content || '');
   let debounce = null;
@@ -1014,7 +1311,16 @@ function setupPanelInteractions(panel) {
   const bodyEl = el.querySelector('[data-panel-body]');
 
   mountEditorIfNeeded(panel, bodyEl);
+  mountMediaIfNeeded(panel, bodyEl);
+  renderPanelFoot(panel);
   closeBtn.addEventListener('click', () => closePanel(panel));
+
+  // lazy fetch obsahu (statický deploy) — po doručení re-renderuje body
+  if (nodeNeedsLazyContent(panel.node)) {
+    ensureNodeContent(panel.node)
+      .then(() => { rerenderPanelBody(panel); renderPanelFoot(panel); })
+      .catch(() => {});
+  }
 
   // klikatelné uzly v ASCII stromu (jen u dir-panelu, ale handler je univerzální)
   let pendingTreeSingle = null;
@@ -1051,9 +1357,12 @@ function setupPanelInteractions(panel) {
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       destroyEditor(panel);
+      revokePanelUrls(panel);
       panel.mode = panel.mode === 'source' ? 'rendered' : 'source';
       bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
       mountEditorIfNeeded(panel, bodyEl);
+      mountMediaIfNeeded(panel, bodyEl);
+      renderPanelFoot(panel);
       playBtn.classList.toggle('is-active', panel.mode === 'rendered');
       playBtn.textContent = panel.mode === 'source' ? 'play' : 'src';
       playBtn.title = panel.mode === 'source' ? 'Sestavit / náhled' : 'Zpět na zdroj';
@@ -1258,6 +1567,7 @@ function openSiblingFiles(node) {
 
 function closePanel(panel) {
   destroyEditor(panel);
+  revokePanelUrls(panel);
   panel.element.remove();
   if (panel === mainPanel) mainPanel = null;
   else previewPanels.delete(panel.path);
@@ -2008,6 +2318,8 @@ async function loadFromFiles(files) {
       kind: isMd ? 'md' : (isText ? 'text' : 'other'),
       filename: name,
     };
+    // binární média (audio/video/image/pdf) — drž referenci na File pro blob URL
+    if (!isText && mediaKind(node)) node._file = file;
     parent.children.push(node);
     if (isText) {
       filePromises.push(async () => {
@@ -2183,6 +2495,102 @@ async function idbClearGithubSpec() {
   } catch {}
 }
 
+// --- historie zdrojů --------------------------------------------------------
+// Pole posledních N připojených zdrojů. Po přepnutí kliku ze source menu
+// uživatel skočí na předchozí zdroj. Persistuje se v IDB pod klíčem
+// `recentSources`. Položka: { type, label, key, ts, data }.
+// - type='handle'   → data=FileSystemDirectoryHandle (structured-cloneable)
+// - type='github'   → data=spec { owner, repo, branch, token? }
+// - type='snapshot' → bez data (re-mount vyžaduje upload), jen historický záznam
+
+const IDB_KEY_RECENT = 'recentSources';
+const RECENT_CAP = 8;
+
+async function idbGetRecent() {
+  try {
+    const db = await idbOpen();
+    const list = await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY_RECENT);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return Array.isArray(list) ? list : [];
+  } catch { return []; }
+}
+
+async function idbSetRecent(list) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(list, IDB_KEY_RECENT);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { console.warn('idb recent persist failed', e); }
+}
+
+function recentKey(entry) {
+  if (entry.type === 'handle') return `handle:${entry.label}`;
+  if (entry.type === 'github') return `github:${entry.data?.owner}/${entry.data?.repo}@${entry.data?.branch || ''}`;
+  if (entry.type === 'snapshot') return `snapshot:${entry.label}`;
+  return entry.label;
+}
+
+async function pushRecentSource(type, label, data) {
+  const list = await idbGetRecent();
+  const entry = {
+    type, label, ts: Date.now(),
+    data: type === 'snapshot' ? null : data, // snapshot trees jsou velké → nepersitujeme data
+  };
+  const key = recentKey(entry);
+  const filtered = list.filter((it) => recentKey(it) !== key);
+  filtered.unshift(entry);
+  await idbSetRecent(filtered.slice(0, RECENT_CAP));
+  renderSourceMenu();
+}
+
+function currentSourceKey() {
+  if (rootHandle) return `handle:${rootHandle.name}`;
+  if (githubSpec) return `github:${githubSpec.owner}/${githubSpec.repo}@${githubSpec.branch || ''}`;
+  if (uploadedSnapshot) return `snapshot:${uploadedSnapshot.name}`;
+  return null;
+}
+
+async function reconnectRecent(entry) {
+  try {
+    if (entry.type === 'github' && entry.data) {
+      await connectGithub({ ...entry.data });
+      return;
+    }
+    if (entry.type === 'handle' && entry.data) {
+      const handle = entry.data;
+      // verify / re-prompt permission (user gesture: klik v dropdownu)
+      let perm = 'denied';
+      try { perm = await handle.queryPermission({ mode: 'readwrite' }); } catch {}
+      if (perm !== 'granted') {
+        try { perm = await handle.requestPermission({ mode: 'readwrite' }); } catch {}
+      }
+      if (perm !== 'granted') {
+        alert(`Nelze otevřít „${entry.label}": prohlížeč zamítl přístup.`);
+        return;
+      }
+      await loadAndMount(handle);
+      return;
+    }
+    if (entry.type === 'snapshot') {
+      alert(`Snapshot „${entry.label}" je potřeba nahrát znovu (přetáhněte složku do okna).`);
+      return;
+    }
+  } catch (e) {
+    console.error('reconnect recent failed', e);
+    alert(`Načtení selhalo: ${e.message}`);
+  }
+}
+
 // --- GitHub jako zdroj ------------------------------------------------------
 // Tree přes Git Trees API jedním requestem (recursive=1). Text souborů:
 // public přes raw.githubusercontent.com (mimo rate-limit), privátní přes
@@ -2233,6 +2641,19 @@ async function ghFetchText(spec, filePath) {
   const r = await fetch(`https://raw.githubusercontent.com/${spec.owner}/${spec.repo}/${encodeURIComponent(spec.branch)}/${segs}`);
   if (!r.ok) throw new Error(`raw ${r.status}`);
   return r.text();
+}
+
+async function ghListBranches(spec) {
+  const out = [];
+  let page = 1;
+  while (page <= 5) {
+    const data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/branches?per_page=100&page=${page}`);
+    if (!Array.isArray(data) || data.length === 0) break;
+    for (const b of data) if (b && b.name) out.push(b.name);
+    if (data.length < 100) break;
+    page++;
+  }
+  return out;
 }
 
 async function pLimitAll(thunks, concurrency = 8) {
@@ -2489,6 +2910,7 @@ async function loadAndMount(handle, opts = {}) {
     if (opts.persist !== false) await idbSetHandle(handle);
     await idbClearGithubSpec();
     await idbClearSnapshot();
+    await pushRecentSource('handle', handle.name || '~', handle);
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
@@ -2510,6 +2932,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     if (opts.persist !== false) await idbSetSnapshot(tree);
     await idbClearHandle();
     await idbClearGithubSpec();
+    await pushRecentSource('snapshot', tree.name || 'snapshot', null);
   } catch (err) {
     console.error(err);
     alert(`Nahrání složky selhalo: ${err.message}`);
@@ -2530,6 +2953,7 @@ async function connectGithub(spec, onStatus) {
   await idbSetGithubSpec(spec);
   await idbClearHandle();
   await idbClearSnapshot();
+  await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
 }
 
 async function disconnectSource() {
@@ -2601,6 +3025,28 @@ async function tryRestoreSnapshot() {
     return true;
   } catch (e) {
     console.warn('restore snapshot failed', e);
+    return false;
+  }
+}
+
+// Default fallback — pokud uživatel nemá žádný zdroj v IDB, načti statický
+// tree.json z apex domény. Obsah jednotlivých souborů se lazy fetchne přes path.
+async function tryLoadStaticTree() {
+  try {
+    const res = await fetch('tree.json', { cache: 'no-cache' });
+    if (!res.ok) return false;
+    const tree = await res.json();
+    rootHandle = null;
+    githubSpec = null;
+    uploadedSnapshot = null;
+    originalTree = tree;
+    currentRootPath = '';
+    recenterHistory = [];
+    hideEmptyState();
+    rebuildMindmap('');
+    return true;
+  } catch (e) {
+    console.warn('static tree load failed', e);
     return false;
   }
 }
@@ -2691,6 +3137,92 @@ function showGithubDialog() {
   setTimeout(() => repoIn.focus(), 0);
 }
 
+// --- Branch picker ----------------------------------------------------------
+
+function showBranchPicker() {
+  if (!githubSpec) return;
+  document.querySelector('[data-gh-branch-picker]')?.remove();
+
+  const spec = githubSpec;
+  const wrap = document.createElement('div');
+  wrap.className = 'gh-dialog';
+  wrap.setAttribute('data-gh-branch-picker', '');
+  wrap.innerHTML = `
+    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Přepnout větev">
+      <h2 class="gh-dialog__title">Větev v ${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</h2>
+      <div class="gh-dialog__status" data-gh-status>načítám větve…</div>
+      <div class="gh-branches" data-gh-branches hidden></div>
+      <div class="gh-dialog__buttons">
+        <button type="button" class="gh-dialog__btn" data-gh-cancel>Zavřít</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const statusEl = wrap.querySelector('[data-gh-status]');
+  const listEl = wrap.querySelector('[data-gh-branches]');
+  const cancelBtn = wrap.querySelector('[data-gh-cancel]');
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  document.addEventListener('keydown', onKey);
+  cancelBtn.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+
+  const switchTo = async (branch) => {
+    if (!githubSpec || branch === githubSpec.branch) { close(); return; }
+    statusEl.dataset.kind = 'info';
+    statusEl.textContent = `přepínám na ${branch}…`;
+    statusEl.hidden = false;
+    listEl.hidden = true;
+    try {
+      await connectGithub({ ...spec, branch }, (m) => { statusEl.textContent = m; });
+      close();
+    } catch (err) {
+      console.error(err);
+      statusEl.dataset.kind = 'err';
+      statusEl.textContent = `Chyba: ${err.message}`;
+      listEl.hidden = false;
+    }
+  };
+
+  (async () => {
+    try {
+      const branches = await ghListBranches(spec);
+      if (!branches.length) {
+        statusEl.dataset.kind = 'err';
+        statusEl.textContent = 'Žádné větve.';
+        return;
+      }
+      const cur = spec.branch;
+      const ordered = branches.slice().sort((a, b) => {
+        if (a === cur) return -1;
+        if (b === cur) return 1;
+        return a.localeCompare(b);
+      });
+      listEl.innerHTML = ordered.map((b) => {
+        const isCur = b === cur;
+        return `<button type="button" class="gh-branch${isCur ? ' gh-branch--current' : ''}" data-branch="${escapeHtml(b)}">
+          <span class="gh-branch__name">${escapeHtml(b)}</span>
+          ${isCur ? '<span class="gh-branch__tag">aktuální</span>' : ''}
+        </button>`;
+      }).join('');
+      listEl.querySelectorAll('[data-branch]').forEach((btn) => {
+        btn.addEventListener('click', () => switchTo(btn.dataset.branch));
+      });
+      statusEl.hidden = true;
+      listEl.hidden = false;
+    } catch (err) {
+      console.error(err);
+      statusEl.dataset.kind = 'err';
+      statusEl.textContent = `Chyba: ${err.message}`;
+    }
+  })();
+}
+
 // --- zdrojové menu v navu ---------------------------------------------------
 
 function renderSourceMenu() {
@@ -2714,10 +3246,22 @@ function renderSourceMenu() {
     label: githubSpec ? 'Připojit jiný GitHub repo…' : 'Připojit GitHub repo…',
     onClick: showGithubDialog,
   });
+  if (githubSpec) {
+    items.push({
+      label: `Větev: ${githubSpec.branch || '…'} ▾`,
+      onClick: showBranchPicker,
+    });
+  }
   items.push({ label: 'Export…', disabled: true, title: 'Brzy' });
   if (hasSource) {
     items.push({ label: 'Odpojit zdroj', onClick: disconnectSource, danger: true });
   }
+
+  const closeMenu = () => {
+    const wrap = document.querySelector('[data-nav-source]');
+    wrap?.classList.remove('is-open');
+    if (document.activeElement && wrap?.contains(document.activeElement)) document.activeElement.blur();
+  };
 
   for (const it of items) {
     const b = document.createElement('button');
@@ -2727,14 +3271,375 @@ function renderSourceMenu() {
     if (it.title) b.title = it.title;
     if (it.disabled) b.disabled = true;
     if (it.onClick) b.addEventListener('click', () => {
-      // zavři dropdown po výběru
-      const wrap = document.querySelector('[data-nav-source]');
-      wrap?.classList.remove('is-open');
-      if (document.activeElement && wrap?.contains(document.activeElement)) document.activeElement.blur();
+      closeMenu();
       it.onClick();
     });
     menu.appendChild(b);
   }
+
+  // historie zdrojů — async, po dohrátí přidá sekci
+  idbGetRecent().then((list) => {
+    if (!list.length) return;
+    const curKey = currentSourceKey();
+    const past = list.filter((e) => recentKey(e) !== curKey);
+    if (!past.length) return;
+
+    const sep = document.createElement('div');
+    sep.className = 'nav__source-sep';
+    sep.textContent = 'Nedávné';
+    menu.appendChild(sep);
+
+    for (const entry of past) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'nav__source-item nav__source-item--recent';
+      const icon = entry.type === 'handle' ? '/' : entry.type === 'github' ? '⎇' : '⤓';
+      b.innerHTML = `<span class="nav__source-item-icon" aria-hidden="true">${icon}</span><span class="nav__source-item-label">${escapeHtml(entry.label)}</span>`;
+      if (entry.type === 'snapshot') {
+        b.title = 'Snapshot — pro otevření nahrajte složku znovu';
+        b.classList.add('nav__source-item--dim');
+      }
+      b.addEventListener('click', () => {
+        closeMenu();
+        reconnectRecent(entry);
+      });
+      menu.appendChild(b);
+    }
+
+    // možnost vyčistit historii
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'nav__source-item nav__source-item--clear';
+    clearBtn.textContent = 'Vyčistit historii';
+    clearBtn.addEventListener('click', async () => {
+      closeMenu();
+      await idbSetRecent([]);
+      renderSourceMenu();
+    });
+    menu.appendChild(clearBtn);
+  }).catch(() => {});
+}
+
+// --- floating badge + wizard -----------------------------------------------
+
+const STRIPE_TIP_URL = 'https://donate.stripe.com/PLACEHOLDER';
+const WAITLIST_ENDPOINT = '/waitlist';
+const HOSTED_PRICE_CZK = 99;
+
+const RESERVED_SUBDOMAINS = new Set([
+  'www', 'api', 'app', 'auth', 'admin', 'status', 'docs', 'mail',
+  'fakan', 'help', 'support', 'blog', 'dev', 'staging', 'test',
+  'mx', 'ns', 'ns1', 'ns2', 'smtp', 'pop', 'imap', 'ftp',
+  'root', 'webmaster', 'postmaster',
+]);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUBDOMAIN_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+
+function mountBadge() {
+  const wrap = document.getElementById('badge');
+  if (!wrap) return;
+  wrap.innerHTML = `
+    <div class="badge__row">
+      <button type="button" class="badge__cta badge__cta--want" data-badge-want>Chci tohle taky →</button>
+      <button type="button" class="badge__cta badge__cta--tip" data-badge-tip>Přispět</button>
+    </div>
+    <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">Open source · AGPL-3.0</a>
+  `;
+  wrap.removeAttribute('hidden');
+  wrap.querySelector('[data-badge-want]').addEventListener('click', () => showWizard());
+  wrap.querySelector('[data-badge-tip]').addEventListener('click', () => {
+    window.open(STRIPE_TIP_URL, '_blank', 'noopener');
+  });
+}
+
+function showWizard() {
+  document.querySelector('[data-wizard]')?.remove();
+
+  const state = {
+    step: 1,
+    email: '',
+    consent: false,
+    subdomain: '',
+    wantsCustomDomain: false,
+    sourceType: '',
+  };
+
+  const wrap = document.createElement('div');
+  wrap.className = 'wizard';
+  wrap.setAttribute('data-wizard', '');
+  wrap.innerHTML = `
+    <div class="wizard__panel" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
+      <header class="wizard__head">
+        <h2 class="wizard__title" id="wizard-title">Vlastní fakan space</h2>
+        <span class="wizard__progress" data-wizard-progress>1 / 5</span>
+      </header>
+
+      <section class="wizard__step wizard__step--active" data-step="1">
+        <p class="wizard__intro">fakan je „přehrávač kazet". Vy nám dáte složku nebo git repo s vašimi <code>.md</code> soubory, my je servírujeme na <code>vy.fakan.cz</code> jako mindmapu.</p>
+        <p class="wizard__intro wizard__intro--muted">Hosted plán bude od ${HOSTED_PRICE_CZK} Kč&nbsp;/&nbsp;měsíc. Backend ještě stavíme — teď sbíráme zájem, dáme vědět, jakmile půjde to nasadit.</p>
+      </section>
+
+      <section class="wizard__step" data-step="2">
+        <p class="wizard__intro">Kam vám napsat, až to půjde spustit?</p>
+        <label class="wizard__field">
+          <span>E-mail</span>
+          <input type="email" data-wizard-email placeholder="vy@example.com" autocomplete="email" required>
+        </label>
+        <label class="wizard__check">
+          <input type="checkbox" data-wizard-consent>
+          <span>Posílejte mi i drobné aktualizace o vývoji. Žádný spam, kdykoli odhlásit.</span>
+        </label>
+      </section>
+
+      <section class="wizard__step" data-step="3">
+        <p class="wizard__intro">Jaká subdoména pod <code>fakan.cz</code>?</p>
+        <label class="wizard__field">
+          <span>Subdoména</span>
+          <span class="wizard__subdomain">
+            <input type="text" data-wizard-subdomain placeholder="vase-jmeno" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <span class="wizard__subdomain-suffix">.fakan.cz</span>
+          </span>
+        </label>
+        <p class="wizard__hint">Malá písmena, číslice a pomlčky. 2 až 31 znaků. Dostupnost ověříme při spuštění.</p>
+        <label class="wizard__check">
+          <input type="checkbox" data-wizard-custom>
+          <span>Chci místo toho vlastní doménu (nakoupíme&nbsp;přes&nbsp;nás, DNS i TLS řešíme my).</span>
+        </label>
+      </section>
+
+      <section class="wizard__step" data-step="4">
+        <p class="wizard__intro">Odkud bereme obsah?</p>
+        <div class="wizard__radios" data-wizard-radios>
+          <label class="wizard__radio">
+            <input type="radio" name="source" value="github">
+            <span>
+              <strong>GitHub repo</strong>
+              <small>Nejlepší volba. Commit = deploy. Zálohy jednou denně do našeho úložiště.</small>
+            </span>
+          </label>
+          <label class="wizard__radio">
+            <input type="radio" name="source" value="folder">
+            <span>
+              <strong>Lokální složka</strong>
+              <small>Z prohlížeče (Chrome/Edge). Synchronizace ručně, bez gitu.</small>
+            </span>
+          </label>
+          <label class="wizard__radio">
+            <input type="radio" name="source" value="upload">
+            <span>
+              <strong>Upload archivu</strong>
+              <small>Pošlete zip / složku jednorázově. Edity přes naše UI, pravidelné backupy.</small>
+            </span>
+          </label>
+        </div>
+      </section>
+
+      <section class="wizard__step" data-step="5">
+        <p class="wizard__intro">Tady je co máme:</p>
+        <div class="wizard__summary">
+          <dl>
+            <div><dt>E-mail</dt><dd data-summary-email></dd></div>
+            <div><dt>Adresa</dt><dd data-summary-addr></dd></div>
+            <div><dt>Zdroj</dt><dd data-summary-source></dd></div>
+          </dl>
+        </div>
+        <p class="wizard__hint">Po odeslání se vám ozveme e-mailem, jakmile Hosted otevřeme.<br>Mezitím můžete podpořit vývoj přes <strong>Přispět</strong>.</p>
+      </section>
+
+      <div class="wizard__error" data-wizard-error></div>
+
+      <div class="wizard__buttons">
+        <button type="button" class="wizard__btn" data-wizard-cancel>Zavřít</button>
+        <div class="wizard__buttons-right">
+          <button type="button" class="wizard__btn" data-wizard-prev hidden>Zpět</button>
+          <button type="button" class="wizard__btn wizard__btn--primary" data-wizard-next>Pokračovat</button>
+        </div>
+      </div>
+
+      <div class="wizard__foot">
+        Vaše data zůstávají ve vašem repu nebo složce. Když fakan zanikne, doména i obsah jsou vaše. <a href="#" data-wizard-zaruka>Záruka</a>.
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const panel = wrap.querySelector('.wizard__panel');
+  const progress = wrap.querySelector('[data-wizard-progress]');
+  const steps = Array.from(wrap.querySelectorAll('.wizard__step'));
+  const errorEl = wrap.querySelector('[data-wizard-error]');
+  const cancelBtn = wrap.querySelector('[data-wizard-cancel]');
+  const prevBtn = wrap.querySelector('[data-wizard-prev]');
+  const nextBtn = wrap.querySelector('[data-wizard-next]');
+  const emailIn = wrap.querySelector('[data-wizard-email]');
+  const consentIn = wrap.querySelector('[data-wizard-consent]');
+  const subIn = wrap.querySelector('[data-wizard-subdomain]');
+  const customIn = wrap.querySelector('[data-wizard-custom]');
+  const radios = wrap.querySelector('[data-wizard-radios]');
+  const TOTAL_STEPS = steps.length;
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  document.addEventListener('keydown', onKey);
+  cancelBtn.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+
+  const setError = (msg) => { errorEl.textContent = msg || ''; };
+
+  const render = () => {
+    steps.forEach((s) => s.classList.toggle('wizard__step--active', Number(s.dataset.step) === state.step));
+    progress.textContent = `${state.step} / ${TOTAL_STEPS}`;
+    prevBtn.hidden = state.step === 1;
+    nextBtn.textContent = state.step === TOTAL_STEPS ? 'Zařadit na waitlist' : 'Pokračovat';
+    setError('');
+    panel.scrollTop = 0;
+    // focus pro krok
+    setTimeout(() => {
+      if (state.step === 2) emailIn.focus();
+      else if (state.step === 3) subIn.focus();
+      else if (state.step === 5) renderSummary();
+    }, 0);
+  };
+
+  const renderSummary = () => {
+    wrap.querySelector('[data-summary-email]').textContent = state.email || '—';
+    const addr = state.wantsCustomDomain ? 'vlastní doména (vybereme společně)' : (state.subdomain ? `${state.subdomain}.fakan.cz` : '—');
+    wrap.querySelector('[data-summary-addr]').textContent = addr;
+    const sourceLabel = {
+      github: 'GitHub repo',
+      folder: 'lokální složka',
+      upload: 'upload archivu',
+    }[state.sourceType] || '—';
+    wrap.querySelector('[data-summary-source]').textContent = sourceLabel;
+  };
+
+  const validateStep = () => {
+    if (state.step === 2) {
+      const v = emailIn.value.trim();
+      if (!EMAIL_RE.test(v)) { setError('Zkontrolujte, prosím, e-mail.'); emailIn.focus(); return false; }
+      state.email = v;
+      state.consent = !!consentIn.checked;
+      return true;
+    }
+    if (state.step === 3) {
+      state.wantsCustomDomain = !!customIn.checked;
+      if (state.wantsCustomDomain) {
+        state.subdomain = '';
+        return true;
+      }
+      const v = subIn.value.trim().toLowerCase();
+      if (!SUBDOMAIN_RE.test(v)) { setError('Subdoména: 2 až 31 znaků, malá písmena, číslice, pomlčky. Nesmí začínat pomlčkou.'); subIn.focus(); return false; }
+      if (RESERVED_SUBDOMAINS.has(v)) { setError('Tahle subdoména je rezervovaná. Zkuste jinou.'); subIn.focus(); return false; }
+      state.subdomain = v;
+      return true;
+    }
+    if (state.step === 4) {
+      const checked = radios.querySelector('input[name="source"]:checked');
+      if (!checked) { setError('Vyberte, odkud bereme obsah.'); return false; }
+      state.sourceType = checked.value;
+      return true;
+    }
+    return true;
+  };
+
+  const submit = async () => {
+    nextBtn.disabled = true;
+    prevBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setError('');
+    const payload = {
+      email: state.email,
+      consent: state.consent,
+      subdomain: state.subdomain || null,
+      wantsCustomDomain: state.wantsCustomDomain,
+      sourceType: state.sourceType,
+      ua: navigator.userAgent,
+      ref: document.referrer || null,
+      at: new Date().toISOString(),
+    };
+    try {
+      const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      if (isDev) {
+        console.info('[wizard] dev — payload:', payload);
+        await new Promise((r) => setTimeout(r, 400));
+      } else {
+        const res = await fetch(WAITLIST_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      }
+      renderSuccess();
+    } catch (err) {
+      console.error('waitlist submit failed', err);
+      setError('Něco se pokazilo. Napište prosím na hromadadan@gmail.com — zařadíme ručně.');
+      nextBtn.disabled = false;
+      prevBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+  };
+
+  const renderSuccess = () => {
+    panel.innerHTML = `
+      <div class="wizard__success">
+        <h3>Jste na seznamu.</h3>
+        <p>Ozveme se vám na <strong>${escapeHtml(state.email)}</strong>, jakmile Hosted otevřeme. Žádný spam mezitím.</p>
+        <p>Pokud chcete vývoj postrčit dopředu, klikněte na <strong>Přispět</strong> v rohu — díky.</p>
+        <div class="wizard__buttons">
+          <span></span>
+          <button type="button" class="wizard__btn wizard__btn--primary" data-wizard-close>Zavřít</button>
+        </div>
+      </div>
+    `;
+    panel.querySelector('[data-wizard-close]').addEventListener('click', close);
+  };
+
+  prevBtn.addEventListener('click', () => {
+    if (state.step > 1) { state.step -= 1; render(); }
+  });
+  nextBtn.addEventListener('click', () => {
+    if (!validateStep()) return;
+    if (state.step === TOTAL_STEPS) { submit(); return; }
+    state.step += 1;
+    render();
+  });
+
+  // Enter v inputu = pokračovat
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.matches('input[type="email"], input[type="text"]')) {
+      e.preventDefault();
+      nextBtn.click();
+    }
+  });
+
+  // klik na radio-row aktivuje radio + označení rodiče
+  radios.addEventListener('change', () => {
+    radios.querySelectorAll('.wizard__radio').forEach((r) => {
+      r.classList.toggle('wizard__radio--active', r.querySelector('input').checked);
+    });
+  });
+
+  // přepínání „vlastní doména" disable / enable subdomain inputu
+  customIn.addEventListener('change', () => {
+    subIn.disabled = customIn.checked;
+    if (customIn.checked) subIn.value = '';
+  });
+
+  // odkaz na záruku
+  wrap.querySelector('[data-wizard-zaruka]').addEventListener('click', (e) => {
+    e.preventDefault();
+    close();
+    const node = byPath?.get('about/zaruka.md');
+    if (node && typeof openMain === 'function') openMain(node);
+  });
+
+  render();
 }
 
 // --- boot --------------------------------------------------------------------
@@ -2789,6 +3694,7 @@ async function boot() {
 
   setupDropZone();
   renderSourceMenu();
+  mountBadge();
   renderEmptyHint(null);
   showEmptyState();
   // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub.
@@ -2796,7 +3702,8 @@ async function boot() {
   (async () => {
     if (await tryRestoreSource()) return;
     if (await tryRestoreGithub()) return;
-    await tryRestoreSnapshot();
+    if (await tryRestoreSnapshot()) return;
+    await tryLoadStaticTree();
   })();
 }
 

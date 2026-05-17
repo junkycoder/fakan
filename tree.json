@@ -1,0 +1,101 @@
+{
+  "name": "fakan.cz",
+  "type": "dir",
+  "children": [
+    {
+      "name": "about",
+      "type": "dir",
+      "children": [
+        {
+          "name": "zaruka.md",
+          "type": "file",
+          "kind": "md",
+          "filename": "zaruka.md",
+          "slug": "zaruka",
+          "title": "Záruka"
+        }
+      ]
+    },
+    {
+      "name": "functions",
+      "type": "dir",
+      "children": [
+        {
+          "name": "waitlist.js",
+          "type": "file",
+          "kind": "text",
+          "filename": "waitlist.js"
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "type": "dir",
+      "children": [
+        {
+          "name": "Imagine Anything s.r.o.",
+          "type": "file",
+          "kind": "web",
+          "filename": "imagineanything.cz.html",
+          "url": "https://imagineanything.cz",
+          "fetched_at": "2026-05-17T14:21:56Z",
+          "title": "Imagine Anything s.r.o."
+        }
+      ]
+    },
+    {
+      "name": "services",
+      "type": "dir",
+      "children": [
+        {
+          "name": "hosted.md",
+          "type": "file",
+          "kind": "md",
+          "filename": "hosted.md",
+          "slug": "hosted",
+          "title": "Hosted"
+        }
+      ]
+    },
+    {
+      "name": "editor.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "editor.js"
+    },
+    {
+      "name": "FOK.md",
+      "type": "file",
+      "kind": "md",
+      "filename": "FOK.md",
+      "slug": "fok",
+      "title": "FOK"
+    },
+    {
+      "name": "index.html",
+      "type": "file",
+      "kind": "text",
+      "filename": "index.html"
+    },
+    {
+      "name": "README.md",
+      "type": "file",
+      "kind": "md",
+      "filename": "README.md",
+      "slug": "README",
+      "title": ""
+    },
+    {
+      "name": "script.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "script.js"
+    },
+    {
+      "name": "styles.css",
+      "type": "file",
+      "kind": "text",
+      "filename": "styles.css"
+    }
+  ]
+}

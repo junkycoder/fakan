@@ -126,17 +126,15 @@ def make_file_node(entry: Path) -> dict:
         except (OSError, UnicodeDecodeError):
             text = ""
         if is_md:
-            fm, body = parse_frontmatter(text)
+            # MD frontmatter (title, slug) jsou součástí indexu — používá je nav
+            # a label. Obsah těla NE — panel ho fetchne přes `path` lazy.
+            fm, _body = parse_frontmatter(text)
             node["slug"] = fm.get("slug") or entry.stem
             node["title"] = fm.get("title") or ""
-            node["content"] = body  # markdown body (po frontmatteru)
-            node["raw"] = text       # surový text souboru včetně frontmatteru
         elif is_html:
             snap = detect_web_snapshot(text)
             if snap:
                 # web uzel: snapshot externí stránky.
-                # Záměrně NEukládáme `content`/`raw` do tree.json — single-file HTML
-                # má klidně stovky KB až MB. Panel fetchne soubor přes `path` přímo.
                 node["kind"] = "web"
                 node["url"] = snap["url"]
                 node["fetched_at"] = snap["fetched_at"]
@@ -144,12 +142,8 @@ def make_file_node(entry: Path) -> dict:
                 node["title"] = display
                 # display name v stromu (bez .html); filename si drží přesný název na disku
                 node["name"] = display
-            else:
-                node["content"] = text
-                node["raw"] = text
-        else:
-            node["content"] = text
-            node["raw"] = text
+        # Tělo souborů (.md content, kód, html) se NEukládá inline. Stejně by se
+        # duplikovalo s tím, co prohlížeč fetchne přes statický URL = path uzlu.
 
     return node
 
