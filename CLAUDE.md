@@ -8,6 +8,23 @@ Instrukce pro Claude Code session, která otevírá tento repo.
 
 Detailní vize, roadmapa a produktové tarify v [README.md](README.md). **Před prací si ji přečti** — jinak nepochopíš, kam to směřuje.
 
+## FOK.md = komunikační log mezi sessionemi
+
+[FOK.md](FOK.md) **NENÍ** soubor s časovými razítky. Je to logovník, kde si s uživatelem vyměňujeme krátké zprávy mimo session.
+
+**Při startu každé nové session**:
+1. Otevři [FOK.md](FOK.md) a najdi všechny entries od posledního `## ... — claude` směrem nahoru.
+2. Ty jsou nové zadání / komentáře od uživatele.
+3. Vyřeš je (jeden po druhém, nebo dohromady — záleží na povaze).
+4. **Zapiš odpověď do FOK.md** nahoru: `## YYYY-MM-DD — claude` + krátký popis co jsi udělal + commit hashe.
+
+Formát:
+- Nejnovější nahoře (prepend nové entries)
+- `## YYYY-MM-DD — claude` nebo `## YYYY-MM-DD — user`
+- Tělo entry: krátce, jako commit message — co se dělo a proč
+
+User často píše do FOK.md mezi session přes svůj editor (ne přes Claude). Bez tohoto kontextu bys přišel/-la o jeho zadání.
+
 ## Pracovní rytmus
 
 Krátké iterace. User řekne, co chce → navrhneš / implementuješ → ověříš v preview → **commit + push**.
