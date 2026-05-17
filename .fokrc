@@ -21,3 +21,6 @@ vendor
 
 # e2e Playwright testy (vlastní package.json, ne obsah webu)
 tests
+
+# promo screenshoty (generované Playwrightem, ne obsah webu)
+promo

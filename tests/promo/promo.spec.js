@@ -7,7 +7,9 @@ import { bootApp, findAnyMd } from '../utils/boot.js';
 import { SEL } from '../utils/selectors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SHOTS = path.resolve(__dirname, '..', 'screenshots');
+// Promo screenshoty jdou plošně do /promo/ v rootu repa, aby byly snadno k nalezení
+// mimo testovací kód (mindmapa je ignoruje přes .fokrc).
+const SHOTS = path.resolve(__dirname, '..', '..', 'promo');
 
 function shotPath(name, project) {
   const suffix = project === 'chromium-dark' ? '-dark' : project === 'mobile' ? '-mobile' : '-light';

@@ -14,7 +14,7 @@ npx playwright install chromium
 
 ```bash
 npm test                # všechny funkční specy (specs/)
-npm run promo           # regeneruje promo screenshoty do screenshots/
+npm run promo           # regeneruje promo screenshoty do /promo/ v rootu repa
 npm run ui              # interaktivní Playwright debugger
 npm run update-baseline # update visual-regression snapshotů (po úmyslné UI změně)
 npm run report          # otevři HTML report z posledního běhu
@@ -35,8 +35,7 @@ tests/
 │   ├── vim-follower.spec.js
 │   └── rerooting.spec.js
 ├── promo/
-│   └── promo.spec.js    # generuje screenshots/
-├── screenshots/         # promo PNG (commitované)
+│   └── promo.spec.js    # generuje /promo/*.png v rootu repa
 ├── utils/
 │   ├── boot.js          # bootApp, focusedPath, findAnyMd, …
 │   └── selectors.js     # konstanty pro data-* selektory
@@ -52,7 +51,7 @@ tests/
 
 ## Promo screenshoty
 
-`screenshots/` obsahuje commitované PNG pro promo materiály (README, sociální sítě, demo). 3 varianty na scénář:
+[/promo/](../promo) v rootu repa obsahuje commitované PNG pro promo materiály (README, sociální sítě, demo). 3 varianty na scénář:
 
 - `*-light.png` — světlý mód (default 1440×900, retina 2x)
 - `*-dark.png` — tmavý mód
