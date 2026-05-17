@@ -805,3 +805,28 @@ button {
 .nav__source-item--danger:hover:not(:disabled) {
   background: color-mix(in oklab, var(--c-red) 15%, transparent);
 }
+
+/* --- nav na mobilu: roztáhnout ostrov ------------------------------------ */
+@media (max-width: 600px) {
+  .nav {
+    width: calc(100vw - 16px);
+    max-width: none;
+    padding: 6px 14px;
+    justify-content: flex-start;
+  }
+  .nav__tabs {
+    flex: 1;
+    max-width: none;
+    min-width: 0;
+    justify-content: flex-start;
+  }
+  .nav__empty {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1;
+  }
+  .nav__source-btn { max-width: 38vw; }
+  .nav__home-btn { max-width: 32vw; }
+}
