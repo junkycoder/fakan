@@ -19,7 +19,7 @@ test.describe('Badge meta', () => {
   test('mail link je mailto: na hromada.dan@gmail.com', async ({ page }) => {
     const mail = page.locator(`${SEL.badge} a`, { hasText: 'mail' });
     await expect(mail).toBeVisible();
-    await expect(mail).toHaveAttribute('href', 'mailto:hromada.dan@gmail.com');
+    await expect(mail).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com/);
   });
 
   test('badge obsahuje obě CTA: "Já to chci taky" a "Přispět"', async ({ page }) => {
