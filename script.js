@@ -1241,29 +1241,55 @@ function renderNav(grid, vp) {
   const dropdown = document.getElementById('nav-dropdown');
   const tabs = document.getElementById('nav-tabs');
   const homeBtn = document.querySelector('[data-home-btn]');
-  const upBtn = document.querySelector('[data-up-btn]');
   const homeWrap = document.querySelector('.nav__home');
 
-  // ~/cesta label + .. button + historie. Volá se po každém recenter.
+  // ~/cesta label + breadcrumb aktuální cesty + historie. Volá se po každém recenter.
   const renderRoute = () => {
     homeBtn.textContent = currentRootPath ? `~/${currentRootPath}/` : '~/';
     homeBtn.title = currentRootPath ? `Skok na hlavní strom (~/)` : 'Hlavní strom';
-    upBtn.disabled = !currentRootPath;
     dropdown.innerHTML = '';
-    if (!recenterHistory.length) {
-      dropdown.classList.add('is-empty');
-      return;
+
+    // breadcrumb ancestrů — jen když nejsme na home
+    const crumbs = [];
+    if (currentRootPath) {
+      crumbs.push({ path: '', label: '~/' });
+      const segs = currentRootPath.split('/');
+      for (let i = 0; i < segs.length; i++) {
+        const p = segs.slice(0, i + 1).join('/');
+        crumbs.push({ path: p, label: `~/${p}/`, current: i === segs.length - 1 });
+      }
     }
-    dropdown.classList.remove('is-empty');
-    for (const p of recenterHistory) {
+    for (const c of crumbs) {
       const row = document.createElement('div');
-      row.className = 'nav__hist';
-      row.innerHTML = `
-        <a class="nav__hist-path" href="#" data-hist-path="${escapeHtml(p)}">~/${escapeHtml(p)}/</a>
-        <button class="nav__hist-close" type="button" data-hist-close="${escapeHtml(p)}" aria-label="Odstranit z historie">×</button>
-      `;
+      row.className = 'nav__crumb' + (c.current ? ' nav__crumb--current' : '');
+      if (c.current) {
+        row.innerHTML = `<span class="nav__crumb-path">${escapeHtml(c.label)}</span>`;
+      } else {
+        row.innerHTML = `<a class="nav__crumb-path" href="#" data-hist-path="${escapeHtml(c.path)}">${escapeHtml(c.label)}</a>`;
+      }
       dropdown.appendChild(row);
     }
+
+    // historie navštívených (bez aktuálního, ten je v crumb)
+    if (recenterHistory.length) {
+      if (crumbs.length) {
+        const sep = document.createElement('div');
+        sep.className = 'nav__crumb-sep';
+        dropdown.appendChild(sep);
+      }
+      for (const p of recenterHistory) {
+        const row = document.createElement('div');
+        row.className = 'nav__hist';
+        row.innerHTML = `
+          <a class="nav__hist-path" href="#" data-hist-path="${escapeHtml(p)}">~/${escapeHtml(p)}/</a>
+          <button class="nav__hist-close" type="button" data-hist-close="${escapeHtml(p)}" aria-label="Odstranit z historie">×</button>
+        `;
+        dropdown.appendChild(row);
+      }
+    }
+
+    if (!crumbs.length && !recenterHistory.length) dropdown.classList.add('is-empty');
+    else dropdown.classList.remove('is-empty');
   };
   renderRoute();
   routeNavListener = renderRoute;
@@ -1312,15 +1338,6 @@ function renderNav(grid, vp) {
     if (homeHit) {
       // ~/ = vrať mindmapu na skutečný kořen
       recenter('');
-      closeDropdown();
-      return;
-    }
-    const upHit = e.target.closest('[data-up-btn]');
-    if (upHit) {
-      if (!currentRootPath) return;
-      const parts = currentRootPath.split('/');
-      parts.pop();
-      recenter(parts.join('/'));
       closeDropdown();
       return;
     }
@@ -1729,6 +1746,96 @@ async function loadFromHandle(handle) {
   return tree;
 }
 
+// --- Upload fallback: postav tree z File[] (Safari / Firefox bez FS Access) --
+// Soubory přicházejí z <input type=file webkitdirectory> nebo z dataTransfer.files.
+// `file.webkitRelativePath` = "<root>/sub/dir/name.ext" (první segment = root jméno).
+// Read-only snapshot — žádný `_handle`, edits jdou do localStorage overlay.
+
+async function loadFromFiles(files) {
+  const arr = Array.from(files).filter((f) => f && f.webkitRelativePath);
+  if (!arr.length) throw new Error('Žádné soubory s relativní cestou.');
+
+  const rootName = arr[0].webkitRelativePath.split('/')[0] || '~';
+
+  // .fokrc — pokud existuje v rootu, použij jeho patterns
+  let patterns = FALLBACK_PATTERNS;
+  const fokrc = arr.find((f) => f.webkitRelativePath === `${rootName}/.fokrc`);
+  if (fokrc) {
+    try { patterns = loadFokrcPatterns(await fokrc.text()); } catch {}
+  }
+
+  const root = { name: rootName, type: 'dir', children: [] };
+  const dirIndex = new Map([['', root]]);
+  const ensureDir = (dirPath) => {
+    if (dirIndex.has(dirPath)) return dirIndex.get(dirPath);
+    const parts = dirPath.split('/');
+    const name = parts[parts.length - 1];
+    const parentPath = parts.slice(0, -1).join('/');
+    const parent = ensureDir(parentPath);
+    if (!parent) return null;
+    if (isHidden(name, patterns)) return null;
+    const node = { name, type: 'dir', children: [] };
+    parent.children.push(node);
+    dirIndex.set(dirPath, node);
+    return node;
+  };
+
+  const MAX_DEPTH = 4;
+  const filePromises = [];
+  for (const file of arr) {
+    const rel = file.webkitRelativePath.split('/').slice(1); // bez root segmentu
+    if (!rel.length) continue;
+    const name = rel[rel.length - 1];
+    const dirSegs = rel.slice(0, -1);
+    if (dirSegs.length + 1 > MAX_DEPTH) continue;
+    if (rel.some((s) => isHidden(s, patterns))) continue;
+    const parent = ensureDir(dirSegs.join('/'));
+    if (!parent) continue;
+    const [stem, ext] = splitExt(name);
+    const isMd = ext === '.md';
+    const isText = TEXT_EXTENSIONS.has(ext) || name.startsWith('.');
+    const node = {
+      name, type: 'file',
+      kind: isMd ? 'md' : (isText ? 'text' : 'other'),
+      filename: name,
+    };
+    parent.children.push(node);
+    if (isText) {
+      filePromises.push(async () => {
+        try {
+          const text = await file.text();
+          if (isMd) {
+            const [fm, body] = parseFrontmatter(text);
+            node.slug = fm.slug || stem;
+            node.title = fm.title || '';
+            node.content = body;
+            node.raw = text;
+          } else {
+            node.content = text;
+            node.raw = text;
+          }
+        } catch (err) { console.warn('upload read failed', file.webkitRelativePath, err); }
+      });
+    }
+  }
+
+  // sort: dirs nahoru, soubory dolů, abecedně
+  const sortChildren = (n) => {
+    if (!n.children) return;
+    n.children.sort((a, b) => {
+      const af = a.type === 'file' ? 1 : 0;
+      const bf = b.type === 'file' ? 1 : 0;
+      if (af !== bf) return af - bf;
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    });
+    for (const c of n.children) sortChildren(c);
+  };
+  sortChildren(root);
+
+  await pLimitAll(filePromises, 16);
+  return root;
+}
+
 // --- IndexedDB persist: FileSystemDirectoryHandle ---------------------------
 // Chrome / Edge dovolí persist FSA handle. Po reloadu queryPermission() typicky
 // vrátí 'prompt' → uživatel musí re-grantnout přes user gesture (jedním klikem).
@@ -1779,6 +1886,47 @@ async function idbClearHandle() {
     await new Promise((res) => {
       const tx = db.transaction(IDB_STORE, 'readwrite');
       tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.oncomplete = res;
+    });
+    db.close();
+  } catch {}
+}
+
+const IDB_KEY_SNAPSHOT = 'uploadedSnapshot';
+
+async function idbSetSnapshot(tree) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(tree, IDB_KEY_SNAPSHOT);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { console.warn('idb snapshot persist failed', e); }
+}
+
+async function idbGetSnapshot() {
+  try {
+    const db = await idbOpen();
+    const tree = await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY_SNAPSHOT);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return tree || null;
+  } catch { return null; }
+}
+
+async function idbClearSnapshot() {
+  try {
+    const db = await idbOpen();
+    await new Promise((res) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY_SNAPSHOT);
       tx.oncomplete = res;
     });
     db.close();
@@ -1988,6 +2136,7 @@ async function loadFromGithub(spec, onStatus) {
 
 let rootHandle = null;
 let githubSpec = null;
+let uploadedSnapshot = null;  // { name } — read-only snapshot z file upload
 
 function showEmptyState() {
   const overlay = document.getElementById('empty-state');
@@ -2046,7 +2195,14 @@ function setupDropZone() {
     const item = e.dataTransfer.items?.[0];
     if (!item) return;
     if (!item.getAsFileSystemHandle) {
-      alert('Drop složky vyžaduje Chrome / Edge / Brave (File System Access API).');
+      // Safari / Firefox: zkus dataTransfer.files. Drop *složky* sem dá jen
+      // 1 položku (samotnou složku, neumíme číst), drop více *souborů* funguje.
+      const files = Array.from(e.dataTransfer.files || []).filter((f) => f.webkitRelativePath);
+      if (!files.length) {
+        alert('Tento prohlížeč drop složky nepodporuje. Použijte „Otevřít složku…" v menu Zdroj.');
+        return;
+      }
+      await loadAndMountSnapshot(files);
       return;
     }
     let handle;
@@ -2064,18 +2220,36 @@ function setupDropZone() {
 }
 
 async function openDirectoryPicker() {
-  if (!window.showDirectoryPicker) {
-    alert('Vyžaduje Chrome / Edge / Brave (File System Access API).');
+  if (window.showDirectoryPicker) {
+    let handle;
+    try {
+      handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (e) {
+      if (e.name !== 'AbortError') console.error(e);
+      return;
+    }
+    await loadAndMount(handle);
     return;
   }
-  let handle;
-  try {
-    handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-  } catch (e) {
-    if (e.name !== 'AbortError') console.error(e);
-    return;
-  }
-  await loadAndMount(handle);
+  // Safari / Firefox fallback: <input type=file webkitdirectory>
+  await openUploadPicker();
+}
+
+async function openUploadPicker() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.multiple = true;
+  input.webkitdirectory = true;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  const files = await new Promise((res) => {
+    input.addEventListener('change', () => res(Array.from(input.files || [])), { once: true });
+    // bez user gesture by .click() neproletělo; spouští se z onClick menu
+    input.click();
+  });
+  input.remove();
+  if (!files.length) return;
+  await loadAndMountSnapshot(files);
 }
 
 async function loadAndMount(handle, opts = {}) {
@@ -2083,6 +2257,7 @@ async function loadAndMount(handle, opts = {}) {
     const tree = await loadFromHandle(handle);
     rootHandle = handle;
     githubSpec = null;
+    uploadedSnapshot = null;
     originalTree = tree;
     currentRootPath = '';
     recenterHistory = [];
@@ -2091,9 +2266,31 @@ async function loadAndMount(handle, opts = {}) {
     renderSourceMenu();
     if (opts.persist !== false) await idbSetHandle(handle);
     await idbClearGithubSpec();
+    await idbClearSnapshot();
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
+  }
+}
+
+async function loadAndMountSnapshot(files, opts = {}) {
+  try {
+    const tree = opts.tree || await loadFromFiles(files);
+    rootHandle = null;
+    githubSpec = null;
+    uploadedSnapshot = { name: tree.name };
+    originalTree = tree;
+    currentRootPath = '';
+    recenterHistory = [];
+    hideEmptyState();
+    rebuildMindmap('');
+    renderSourceMenu();
+    if (opts.persist !== false) await idbSetSnapshot(tree);
+    await idbClearHandle();
+    await idbClearGithubSpec();
+  } catch (err) {
+    console.error(err);
+    alert(`Nahrání složky selhalo: ${err.message}`);
   }
 }
 
@@ -2101,6 +2298,7 @@ async function connectGithub(spec, onStatus) {
   const tree = await loadFromGithub(spec, onStatus);
   rootHandle = null;
   githubSpec = spec;
+  uploadedSnapshot = null;
   originalTree = tree;
   currentRootPath = '';
   recenterHistory = [];
@@ -2109,13 +2307,16 @@ async function connectGithub(spec, onStatus) {
   renderSourceMenu();
   await idbSetGithubSpec(spec);
   await idbClearHandle();
+  await idbClearSnapshot();
 }
 
 async function disconnectSource() {
   await idbClearHandle();
   await idbClearGithubSpec();
+  await idbClearSnapshot();
   rootHandle = null;
   githubSpec = null;
+  uploadedSnapshot = null;
   originalTree = null;
   currentRootPath = '';
   recenterHistory = [];
@@ -2166,6 +2367,18 @@ async function tryRestoreGithub() {
     return true;
   } catch (e) {
     console.warn('restore github failed', e);
+    return false;
+  }
+}
+
+async function tryRestoreSnapshot() {
+  const tree = await idbGetSnapshot();
+  if (!tree) return false;
+  try {
+    await loadAndMountSnapshot(null, { tree, persist: false });
+    return true;
+  } catch (e) {
+    console.warn('restore snapshot failed', e);
     return false;
   }
 }
@@ -2263,12 +2476,13 @@ function renderSourceMenu() {
   const menu = document.querySelector('[data-source-menu]');
   const labelText = rootHandle ? rootHandle.name
     : githubSpec ? `${githubSpec.owner}/${githubSpec.repo}`
+    : uploadedSnapshot ? uploadedSnapshot.name
     : 'Zdroj';
   if (label) label.textContent = labelText;
   if (!menu) return;
   menu.innerHTML = '';
 
-  const hasSource = !!(rootHandle || githubSpec);
+  const hasSource = !!(rootHandle || githubSpec || uploadedSnapshot);
   const items = [];
   items.push({
     label: hasSource ? 'Otevřít jinou složku…' : 'Otevřít složku…',
@@ -2359,7 +2573,8 @@ async function boot() {
   // Pokud uspěje, schová empty hint sám.
   (async () => {
     if (await tryRestoreSource()) return;
-    await tryRestoreGithub();
+    if (await tryRestoreGithub()) return;
+    await tryRestoreSnapshot();
   })();
 }
 

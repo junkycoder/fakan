@@ -236,16 +236,6 @@ button {
 .nav__home:hover .nav__home-btn,
 .nav__home:focus-within .nav__home-btn { color: var(--c-yellow); }
 
-.nav__up-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--muted);
-  padding: 2px 8px;
-  border-radius: 4px;
-}
-.nav__up-btn:hover:not(:disabled) { color: var(--c-yellow); }
-.nav__up-btn:disabled { opacity: 0.35; cursor: default; }
-
 .nav__dropdown {
   position: absolute;
   bottom: calc(100% + 8px);
@@ -264,6 +254,32 @@ button {
 .nav__home:focus-within .nav__dropdown { display: flex; }
 .nav__home.is-open .nav__dropdown { display: flex; }
 .nav__dropdown.is-empty { display: none !important; }
+
+.nav__crumb {
+  display: flex;
+  align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.nav__crumb:hover { color: var(--fg); background: color-mix(in oklab, var(--c-yellow) 25%, transparent); }
+.nav__crumb--current { color: var(--fg); }
+.nav__crumb--current:hover { background: transparent; cursor: default; }
+.nav__crumb-path {
+  flex: 1;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+.nav__crumb--current .nav__crumb-path { cursor: default; }
+.nav__crumb-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 4px;
+}
 
 .nav__hist {
   display: flex;
