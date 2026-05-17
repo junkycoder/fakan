@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>fakan.cz</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="chrome chrome--top" data-chrome>
+    <a class="brand" href="/">fakan.cz</a>
+
+    <nav class="nav" aria-label="Hlavní">
+      <a href="#uvod">úvod</a>
+      <a href="#prace">práce</a>
+      <a href="#kontakt">kontakt</a>
+    </nav>
+
+    <form class="login" action="#" method="post" novalidate>
+      <input
+        type="email"
+        name="email"
+        autocomplete="email"
+        inputmode="email"
+        placeholder="Přihlašte se"
+        aria-label="E-mail pro přihlášení"
+      />
+    </form>
+  </header>
+
+  <main class="snap" data-snap>
+    <article id="uvod" class="screen">
+      <div class="screen__scroll">
+        <section class="screen__inner hero">
+          <input
+            class="hero__title"
+            type="text"
+            value="fakan.cz"
+            size="8"
+            readonly
+            aria-label="fakan.cz"
+          />
+        </section>
+      </div>
+    </article>
+
+    <article id="prace" class="screen">
+      <div class="screen__scroll">
+        <section class="screen__inner">
+          <h1>práce</h1>
+        </section>
+      </div>
+    </article>
+
+    <article id="kontakt" class="screen">
+      <div class="screen__scroll">
+        <section class="screen__inner">
+          <h1>kontakt</h1>
+        </section>
+      </div>
+    </article>
+  </main>
+
+  <footer class="chrome chrome--bottom" data-chrome>
+    <small>© fakan.cz</small>
+  </footer>
+
+  <dialog id="pay-dialog" class="pay" aria-labelledby="pay-title">
+    <form method="dialog" class="pay__form" data-pay-form>
+      <div class="pay__head">
+        <h2 id="pay-title">Pošlete 25 Kč</h2>
+        <button class="pay__close" type="button" data-pay-close aria-label="Zavřít">×</button>
+      </div>
+      <div class="pay__body">
+        <!-- TODO: sem patří Stripe Payment Element po doplnění backendu -->
+        <div id="stripe-element" data-stripe-mount></div>
+        <p data-pay-hint>Platba kartou přes Stripe.</p>
+      </div>
+      <div class="pay__actions">
+        <button class="pay__submit" value="pay" type="submit">Zaplatit 25 Kč</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="script.js" type="module"></script>
+</body>
+</html>
