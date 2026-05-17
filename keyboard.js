@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { focusNode, recenter } from './mindmap.js';
 import {
-  openMain, openMainOnly, openPreview, openAsFollower,
+  openMain, openMainOnly, openAsFollower,
   closePanel, toggleMax, bringToFront, setActive, getAllPanels,
 } from './panels.js';
 
@@ -130,7 +130,7 @@ export function setupKeyboard(_unused, vp) {
       if (e.code === 'KeyN') {
         e.preventDefault();
         const node = state.byPath.get(state.focusedPath);
-        if (node) openPreview(node);
+        if (node) openAsFollower(node);
         return;
       }
       const dm = e.code.match(/^Digit([1-9])$/);
@@ -187,8 +187,8 @@ export function setupKeyboard(_unused, vp) {
         openMainOnly(node);
         return;
       }
-      // bez modifieru: otevři vždy v novém okně (preview-styled, additive)
-      openPreview(node);
+      // bez modifieru: otevři jako main panel
+      openMain(node);
       return;
     }
 

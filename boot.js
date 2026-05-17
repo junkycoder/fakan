@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { setupViewport, focusNode, recenter } from './mindmap.js';
 import {
-  renderNav, openMain, openMainOnly, openPreview, openAsFollower,
+  renderNav, openMain, openMainOnly, openAsFollower,
 } from './panels.js';
 import { setupKeyboard } from './keyboard.js';
 import {
@@ -46,15 +46,15 @@ export async function boot() {
       return;
     }
     if (e.shiftKey) { openMainOnly(node); return; }
-    // Cmd/Ctrl+klik = follower preview (totéž okno jako Space — toggluje, sleduje focus)
+    // Cmd/Ctrl+klik = follower preview (totéž okno jako Space)
     if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
     if (mode === 'new') {
       if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
-      openPreview(node);
+      openMain(node);
       return;
     }
     if (pendingSingle) clearTimeout(pendingSingle);
-    pendingSingle = setTimeout(() => { pendingSingle = null; openMain(node); }, 220);
+    pendingSingle = setTimeout(() => { pendingSingle = null; openAsFollower(node); }, 220);
   };
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));

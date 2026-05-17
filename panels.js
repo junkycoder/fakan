@@ -505,11 +505,11 @@ function setupPanelInteractions(panel) {
     if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
     if (mode === 'new') {
       if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
-      openPreview(node);
+      openMain(node);
       return;
     }
     if (pendingTreeSingle) clearTimeout(pendingTreeSingle);
-    pendingTreeSingle = setTimeout(() => { pendingTreeSingle = null; openMain(node); }, 220);
+    pendingTreeSingle = setTimeout(() => { pendingTreeSingle = null; openAsFollower(node); }, 220);
   };
   bodyEl.addEventListener('click', (e) => handleTreeNode(e, 'main'));
   bodyEl.addEventListener('dblclick', (e) => handleTreeNode(e, 'new'));
