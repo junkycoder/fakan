@@ -58,6 +58,12 @@
       ]
     },
     {
+      "name": "boot.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "boot.js"
+    },
+    {
       "name": "editor.js",
       "type": "file",
       "kind": "text",
@@ -78,6 +84,30 @@
       "filename": "index.html"
     },
     {
+      "name": "keyboard.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "keyboard.js"
+    },
+    {
+      "name": "main.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "main.js"
+    },
+    {
+      "name": "mindmap.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "mindmap.js"
+    },
+    {
+      "name": "panels.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "panels.js"
+    },
+    {
       "name": "README.md",
       "type": "file",
       "kind": "md",
@@ -86,10 +116,16 @@
       "title": ""
     },
     {
-      "name": "script.js",
+      "name": "sources.js",
       "type": "file",
       "kind": "text",
-      "filename": "script.js"
+      "filename": "sources.js"
+    },
+    {
+      "name": "state.js",
+      "type": "file",
+      "kind": "text",
+      "filename": "state.js"
     },
     {
       "name": "styles.css",
