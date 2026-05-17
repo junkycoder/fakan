@@ -518,8 +518,11 @@ function mountEditorIfNeeded(panel, bodyEl) {
     onClose: () => closePanel(panel),
   });
   panel.editor = handle;
-  // dej editoru focus, aby vim klávesy fungovaly hned
-  requestAnimationFrame(() => handle.focus());
+  // dej editoru focus, aby vim klávesy fungovaly hned —
+  // u followera (Space) ale ne, aby šipky zůstaly v mindmapě
+  if (panel.autofocusEditor !== false) {
+    requestAnimationFrame(() => handle.focus());
+  }
 }
 
 function destroyEditor(panel) {
@@ -694,6 +697,7 @@ export function openMain(node) {
     state.mainPanel = null;
   }
   const panel = createPanel(node, 'main');
+  panel.autofocusEditor = true;
   positionPanel(panel);
   document.getElementById('panels').appendChild(panel.element);
   setupPanelInteractions(panel);
@@ -714,6 +718,7 @@ export function openPreview(node) {
     return existing;
   }
   const panel = createPanel(node, 'preview');
+  panel.autofocusEditor = true;
   positionPanel(panel);
   document.getElementById('panels').appendChild(panel.element);
   setupPanelInteractions(panel);
@@ -750,6 +755,7 @@ export function openAsFollower(node) {
   // pokud je uzel už otevřený jako běžný preview, povýším ho na followera
   const existing = state.previewPanels.get(path);
   if (existing) {
+    existing.autofocusEditor = false;
     state.followerPanel = existing;
     bringToFront(existing.element);
     setActive(existing);
@@ -758,6 +764,7 @@ export function openAsFollower(node) {
 
   // jinak vyrobím nový preview a označím jako follower
   const panel = createPanel(node, 'preview');
+  panel.autofocusEditor = false;
   if (state.lastFollowerStyles) {
     const s = state.lastFollowerStyles;
     if (s.left) panel.element.style.left = s.left;
