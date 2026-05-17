@@ -629,7 +629,9 @@ let activePanel = null;          // okno s yellow headerem
 let followerPanel = null;        // náhled, který sleduje šipkový focus
 let lastFollowerStyles = null;   // pozice/velikost zachovaná mezi instancemi followera
 let panelZ = 100;
-let panelNavListener = null;     // callback do nav re-renderu
+let panelNavListener = null;     // callback do nav re-renderu (taby)
+let routeNavListener = null;     // callback do nav re-renderu (home / .. / historie)
+let recenterHistory = [];        // navštívené rooty (bez aktuálního), nejnovější první
 let treeNodes = [];              // všechny uzly, pro sourozeneckou auto-otevírku
 
 // --- re-rooting + tree index (module-level, aktualizováno při rebuild) -------
@@ -711,8 +713,24 @@ function rebuildMindmap(focusPath) {
 }
 
 function recenter(path) {
-  currentRootPath = path || '';
+  const next = path || '';
+  if (next === currentRootPath) return;
+  // ulož předchozí root do historie (dedup, cap)
+  if (currentRootPath) {
+    recenterHistory = recenterHistory.filter((p) => p !== currentRootPath);
+    recenterHistory.unshift(currentRootPath);
+    if (recenterHistory.length > 30) recenterHistory.length = 30;
+  }
+  // nový root nesmí být zároveň v historii
+  recenterHistory = recenterHistory.filter((p) => p !== next);
+  currentRootPath = next;
   rebuildMindmap();
+  if (routeNavListener) routeNavListener();
+}
+
+function removeFromHistory(path) {
+  recenterHistory = recenterHistory.filter((p) => p !== path);
+  if (routeNavListener) routeNavListener();
 }
 
 function allPanels() {
@@ -767,7 +785,8 @@ function renderTreeInlineHTML(grid) {
     let out = '';
     for (const n of arr) {
       out += escapeHtml(line.slice(cursor, n.localCol).join(''));
-      out += `<span class="n ${nodeClass(n)}">${escapeHtml(n.name)}</span>`;
+      const dp = n.path == null ? '/' : (n.path || '/');
+      out += `<span class="n ${nodeClass(n)}" data-path="${escapeHtml(dp)}" data-type="${escapeHtml(n.type)}" role="button" tabindex="0">${escapeHtml(n.name)}</span>`;
       cursor = n.localCol + n.name.length;
     }
     out += escapeHtml(line.slice(cursor).join(''));
@@ -904,6 +923,37 @@ function setupPanelInteractions(panel) {
   const bodyEl = el.querySelector('[data-panel-body]');
 
   closeBtn.addEventListener('click', () => closePanel(panel));
+
+  // klikatelné uzly v ASCII stromu (jen u dir-panelu, ale handler je univerzální)
+  let pendingTreeSingle = null;
+  const handleTreeNode = (e, mode) => {
+    const span = e.target.closest('.src-tree .n');
+    if (!span) return;
+    const raw = span.dataset.path;
+    if (raw == null) return;
+    const path = raw === '/' ? '' : raw;
+    const node = byPath.get(path);
+    if (!node) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // adresář (i root) = recenter, panel se stromem nech, ať si user zavře sám
+    if (node.type === 'dir' || node.type === 'root') {
+      if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
+      recenter(node.path || '');
+      return;
+    }
+    if (e.shiftKey) { openMainOnly(node); return; }
+    if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
+    if (mode === 'new') {
+      if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
+      openPreview(node);
+      return;
+    }
+    if (pendingTreeSingle) clearTimeout(pendingTreeSingle);
+    pendingTreeSingle = setTimeout(() => { pendingTreeSingle = null; openMain(node); }, 220);
+  };
+  bodyEl.addEventListener('click', (e) => handleTreeNode(e, 'main'));
+  bodyEl.addEventListener('dblclick', (e) => handleTreeNode(e, 'new'));
 
   if (autoBtn) {
     autoBtn.addEventListener('click', (e) => {
@@ -1144,18 +1194,33 @@ function closePanel(panel) {
 function renderNav(grid, vp) {
   const dropdown = document.getElementById('nav-dropdown');
   const tabs = document.getElementById('nav-tabs');
+  const homeBtn = document.querySelector('[data-home-btn]');
+  const upBtn = document.querySelector('[data-up-btn]');
+  const homeWrap = document.querySelector('.nav__home');
 
-  // sekce v dropdown — vždy top-level dirs SKUTEČNÉHO kořene (i po recenter)
-  const topDirs = (originalTree?.children || []).filter((c) => c.type === 'dir');
-  dropdown.innerHTML = '';
-  for (const d of topDirs) {
-    const a = document.createElement('a');
-    a.className = 'nav__section';
-    a.href = '#';
-    a.dataset.path = d.name;
-    a.textContent = d.name;
-    dropdown.appendChild(a);
-  }
+  // ~/cesta label + .. button + historie. Volá se po každém recenter.
+  const renderRoute = () => {
+    homeBtn.textContent = currentRootPath ? `~/${currentRootPath}/` : '~/';
+    homeBtn.title = currentRootPath ? `Skok na hlavní strom (~/)` : 'Hlavní strom';
+    upBtn.disabled = !currentRootPath;
+    dropdown.innerHTML = '';
+    if (!recenterHistory.length) {
+      dropdown.classList.add('is-empty');
+      return;
+    }
+    dropdown.classList.remove('is-empty');
+    for (const p of recenterHistory) {
+      const row = document.createElement('div');
+      row.className = 'nav__hist';
+      row.innerHTML = `
+        <a class="nav__hist-path" href="#" data-hist-path="${escapeHtml(p)}">~/${escapeHtml(p)}/</a>
+        <button class="nav__hist-close" type="button" data-hist-close="${escapeHtml(p)}" aria-label="Odstranit z historie">×</button>
+      `;
+      dropdown.appendChild(row);
+    }
+  };
+  renderRoute();
+  routeNavListener = renderRoute;
 
   // taby = všechny otevřené panely
   const renderTabs = () => {
@@ -1187,20 +1252,44 @@ function renderNav(grid, vp) {
   renderTabs();
   panelNavListener = renderTabs;
 
+  // dropdown zavírá se sám na hover-off; po kliku potřebuju spolehlivý zavřík
+  const closeDropdown = () => {
+    homeWrap.classList.remove('is-open');
+    if (document.activeElement && homeWrap.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+  };
+
   // klik handlery
   document.getElementById('nav').addEventListener('click', (e) => {
-    const homeBtn = e.target.closest('[data-home-btn]');
-    if (homeBtn) {
+    const homeHit = e.target.closest('[data-home-btn]');
+    if (homeHit) {
       // ~/ = vrať mindmapu na skutečný kořen
       recenter('');
+      closeDropdown();
       return;
     }
-    const section = e.target.closest('.nav__section');
-    if (section) {
+    const upHit = e.target.closest('[data-up-btn]');
+    if (upHit) {
+      if (!currentRootPath) return;
+      const parts = currentRootPath.split('/');
+      parts.pop();
+      recenter(parts.join('/'));
+      closeDropdown();
+      return;
+    }
+    const histClose = e.target.closest('[data-hist-close]');
+    if (histClose) {
       e.preventDefault();
-      const path = section.dataset.path;
-      // sekce → recenter na tu složku (stane se novým středem)
-      recenter(path);
+      e.stopPropagation();
+      removeFromHistory(histClose.dataset.histClose);
+      return;
+    }
+    const histPath = e.target.closest('[data-hist-path]');
+    if (histPath) {
+      e.preventDefault();
+      recenter(histPath.dataset.histPath);
+      closeDropdown();
       return;
     }
     const tabClose = e.target.closest('.nav__tab-close');
@@ -1425,9 +1514,9 @@ function setupKeyboard(_unused, vp) {
       const node = byPath.get(focusedPath);
       if (!node) return;
       e.preventDefault();
-      // Shift+Enter na adresáři = ten se stane novým středem (recenter)
-      if (e.shiftKey && node.type === 'dir') {
-        recenter(node.path);
+      // adresář (i root) = recenter
+      if (node.type === 'dir' || node.type === 'root') {
+        recenter(node.path || '');
         return;
       }
       // Shift+Enter na souboru = jediné okno (zavři preview, otevři main)
@@ -1444,6 +1533,11 @@ function setupKeyboard(_unused, vp) {
       const node = byPath.get(focusedPath);
       if (node) {
         e.preventDefault();
+        // adresář (i root) = recenter
+        if (node.type === 'dir' || node.type === 'root') {
+          recenter(node.path || '');
+          return;
+        }
         // druhý mezerník na stejném uzlu zavře follower
         if (followerPanel && followerPanel.path === (node.path || '/')) {
           closePanel(followerPanel);
@@ -1507,6 +1601,12 @@ async function boot() {
     const node = byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
+    // adresář (i root) = recenter, ne otevírání okna se stromem
+    if (node.type === 'dir' || node.type === 'root') {
+      if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
+      recenter(node.path || '');
+      return;
+    }
     if (e.shiftKey) { openMainOnly(node); return; }
     // Cmd/Ctrl+klik = follower preview (totéž okno jako Space — toggluje, sleduje focus)
     if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }

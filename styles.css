@@ -228,9 +228,23 @@ button {
   color: var(--muted);
   padding: 2px 8px;
   border-radius: 4px;
+  white-space: nowrap;
+  max-width: 28vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nav__home:hover .nav__home-btn,
 .nav__home:focus-within .nav__home-btn { color: var(--c-yellow); }
+
+.nav__up-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.nav__up-btn:hover:not(:disabled) { color: var(--c-yellow); }
+.nav__up-btn:disabled { opacity: 0.35; cursor: default; }
 
 .nav__dropdown {
   position: absolute;
@@ -243,26 +257,44 @@ button {
   display: none;
   flex-direction: column;
   gap: 2px;
-  min-width: 140px;
+  min-width: 180px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.18);
 }
 .nav__home:hover .nav__dropdown,
 .nav__home:focus-within .nav__dropdown { display: flex; }
+.nav__home.is-open .nav__dropdown { display: flex; }
+.nav__dropdown.is-empty { display: none !important; }
 
-.nav__section {
+.nav__hist {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-family: var(--mono);
   font-size: 12px;
   color: var(--muted);
-  text-decoration: none;
-  padding: 4px 8px;
+  padding: 4px 4px 4px 8px;
   border-radius: 4px;
   white-space: nowrap;
-  cursor: pointer;
 }
-.nav__section:hover {
+.nav__hist:hover {
   color: var(--fg);
   background: color-mix(in oklab, var(--c-yellow) 25%, transparent);
 }
+.nav__hist-path {
+  cursor: pointer;
+  flex: 1;
+  text-decoration: none;
+  color: inherit;
+}
+.nav__hist-close {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+  padding: 0 4px;
+  border-radius: 3px;
+  line-height: 1;
+}
+.nav__hist-close:hover { color: var(--c-red); background: color-mix(in oklab, var(--c-red) 15%, transparent); }
 
 .nav__tabs {
   display: flex;
@@ -432,7 +464,9 @@ button {
   height: 100%;
   box-sizing: border-box;
 }
-.src-tree .n         { color: var(--fg); }
+.src-tree .n         { color: var(--fg); cursor: pointer; border-radius: 3px; }
+.src-tree .n:hover   { background: color-mix(in oklab, var(--c-yellow) 25%, transparent); color: var(--fg); }
+.src-tree .n:focus-visible { outline: 1px solid var(--c-yellow); outline-offset: 1px; }
 .src-tree .n--root   { color: var(--fg); font-weight: 700; }
 .src-tree .n--dir    { color: var(--c-blue); }
 .src-tree .n--doc    { color: var(--c-orange); }
