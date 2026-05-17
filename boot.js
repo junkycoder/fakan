@@ -3,13 +3,14 @@
 import { state } from './state.js';
 import { setupViewport, focusNode, recenter } from './mindmap.js';
 import {
-  renderNav, openMain, openMainOnly, openPreview, openAsFollower,
+  renderNav, openMain, openMainOnly, openPreview, openAsFollower, closePanel,
 } from './panels.js';
 import { setupKeyboard } from './keyboard.js';
 import {
   setupDropZone, renderSourceMenu, mountBadge, renderEmptyHint, showEmptyState,
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadStaticTree,
 } from './sources.js';
+import { urlToPath, findNodeByPath, syncUrl } from './url.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -66,10 +67,41 @@ export async function boot() {
   showEmptyState();
   // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub.
   // Pokud uspěje, schová empty hint sám.
-  (async () => {
+  await (async () => {
     if (await tryRestoreSource()) return;
     if (await tryRestoreGithub()) return;
     if (await tryRestoreSnapshot()) return;
     await tryLoadStaticTree();
   })();
+  initFromUrl();
+  window.addEventListener('popstate', initFromUrl);
+}
+
+// Aplikuje URL na state: recenter na rodiče souboru + openMain.
+// Tolerantní — neexistující cestu nebo dir prostě ignoruje.
+function initFromUrl() {
+  const path = urlToPath();
+  if (!path) {
+    // návrat na /: zavři main panel, vrať mindmapu na home
+    if (state.mainPanel) closePanel(state.mainPanel);
+    if (state.currentRootPath) recenter('');
+    return;
+  }
+  const node = findNodeByPath(state.originalTree, path);
+  if (!node || node.type !== 'file') {
+    // neznámá cesta nebo dir — necháme být, URL ponecháme, user uvidí home
+    return;
+  }
+  const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+  recenter(parent);
+  const fresh = state.byPath.get(path) || node;
+  // pokud už main panel sedí na cílový soubor (popstate na stejnou URL), jen refocus
+  if (state.mainPanel && state.mainPanel.path === path) {
+    focusNode(fresh);
+    return;
+  }
+  openMain(fresh);
+  focusNode(fresh);
+  // pojistka: openMain volá syncUrl, ale pokud byl path identický, mohl by chybět
+  syncUrl(path);
 }
