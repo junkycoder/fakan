@@ -1,30 +1,32 @@
 :root {
   color-scheme: light dark;
 
-  /* paleta — 9 barev (3 primární, 3 sekundární, 3 terciární) */
-  --c-red:    #d33b3b;  /* primary */
-  --c-yellow: #e8b500;  /* primary */
-  --c-blue:   #2f5dd6;  /* primary */
-  --c-orange: #db6a1c;  /* secondary */
-  --c-green:  #2f9e63;  /* secondary */
-  --c-purple: #6b3fc7;  /* secondary */
-  --c-pink:   #c93c8a;  /* tertiary */
-  --c-lime:   #6fa82a;  /* tertiary */
-  --c-teal:   #1e8a86;  /* tertiary */
+  /* paleta — 9 barev */
+  --c-red:    #d33b3b;
+  --c-yellow: #e8b500;
+  --c-blue:   #2f5dd6;
+  --c-orange: #db6a1c;
+  --c-green:  #2f9e63;
+  --c-purple: #6b3fc7;
+  --c-pink:   #c93c8a;
+  --c-lime:   #6fa82a;
+  --c-teal:   #1e8a86;
 
-  /* pozadí + text — lehce off, ne pure b/w; dobrý kontrast */
   --bg:    #f7f7f4;
   --fg:    #15151a;
   --muted: #6b6b73;
-  --line:  #e6e6e0;
+  --line:  #c8c8c0;
 
-  --chrome-h: 44px;
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* mřížka monospace — sladěno s font-size 14px / line-height 18px */
+  --char-w: 8.4px;
+  --line-h: 18px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,9 +34,8 @@
     --bg:    #0f0f12;
     --fg:    #ececea;
     --muted: #8a8a90;
-    --line:  #1f1f24;
+    --line:  #3a3a42;
 
-    /* odstíny vyladěné pro dark, zachovaný kontrast */
     --c-red:    #ef5a5a;
     --c-yellow: #f1c84a;
     --c-blue:   #6e94f0;
@@ -56,27 +57,15 @@ html, body {
   color: var(--fg);
   font-family: var(--mono);
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 18px;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
+  overflow: hidden;
+  height: 100%;
+  height: 100dvh;
 }
 
-html, body { height: 100%; height: 100dvh; }
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-a:hover { text-decoration: underline; }
-
-::selection {
-  background: var(--c-yellow);
-  color: #15151a;
-}
-::-moz-selection {
-  background: var(--c-yellow);
-  color: #15151a;
-}
+::selection { background: var(--c-yellow); color: #15151a; }
 
 button {
   font: inherit;
@@ -87,212 +76,219 @@ button {
   cursor: pointer;
 }
 
-/* --- chrome (header + footer) ------------------------------------------- */
+/* --- canvas / viewport ---------------------------------------------------- */
 
-.chrome {
+.canvas {
   position: fixed;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 16px;
-  height: calc(var(--chrome-h) + var(--safe-t));
-  padding: 0 calc(16px + var(--safe-r)) 0 calc(16px + var(--safe-l));
-  background: var(--bg);
-  border-bottom: 1px solid transparent;
-  transition: transform 240ms ease, border-color 240ms ease;
+  inset: 0;
+  cursor: grab;
+  outline: none;
+  /* jemná textura pomocí gradientu */
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0, transparent 60%, color-mix(in oklab, var(--fg) 4%, transparent) 100%),
+    var(--bg);
+}
+.canvas.is-panning { cursor: grabbing; }
+
+.canvas__viewport {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
   will-change: transform;
 }
 
-.chrome--top {
-  top: 0;
-  padding-top: var(--safe-t);
-}
-
-.chrome--bottom {
-  bottom: 0;
-  height: calc(var(--chrome-h) + var(--safe-b));
-  padding-bottom: var(--safe-b);
-  border-bottom: none;
-  border-top: 1px solid transparent;
-  grid-template-columns: 1fr;
-  justify-items: center;
-  color: var(--muted);
-}
-
-/* idle = chrome zasunuté za hranu */
-body[data-idle="true"] .chrome--top    { transform: translateY(-100%); }
-body[data-idle="true"] .chrome--bottom { transform: translateY(100%); }
-
-/* na úvodní obrazovce je chrome vždy schované */
-body[data-screen="uvod"] .chrome--top    { transform: translateY(-100%); }
-body[data-screen="uvod"] .chrome--bottom { transform: translateY(100%); }
-
-/* aktivní stav (a ne na úvodu): jemná linka */
-body:not([data-idle="true"]):not([data-screen="uvod"]) .chrome--top    { border-bottom-color: var(--line); }
-body:not([data-idle="true"]):not([data-screen="uvod"]) .chrome--bottom { border-top-color: var(--line); }
-
-.brand {
-  font-family: var(--mono);
-  font-weight: 400;
-}
-
-.nav {
-  display: flex;
-  gap: 16px;
-  justify-self: center;
-  color: var(--muted);
-}
-.nav a[aria-current="true"] { color: var(--fg); }
-
-.login {
-  justify-self: end;
-  display: flex;
-}
-.login input {
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  outline: 0;
-  padding: 4px 0;
-  width: 16ch;
-  text-align: right;
-}
-.login input::placeholder { color: var(--muted); }
-.login input:focus { width: 24ch; }
-
-/* --- snap scroller ------------------------------------------------------- */
-
-.snap {
-  height: 100dvh;
-  overflow-y: auto;
-  scroll-snap-type: y mandatory;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-
-.screen {
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
-  height: 100dvh;
-  width: 100%;
+.map {
   margin: 0;
-  position: relative;
-}
-
-.screen__scroll {
-  height: 100%;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-}
-
-.screen__inner {
-  min-height: 100%;
-  padding:
-    calc(var(--chrome-h) + var(--safe-t) + 24px)
-    calc(24px + var(--safe-r))
-    calc(var(--chrome-h) + var(--safe-b) + 24px)
-    calc(24px + var(--safe-l));
-}
-
-h1 {
-  font-size: 14px;
-  font-weight: 400;
-  margin: 0 0 16px;
-  color: var(--muted);
-}
-
-/* --- hero (úvod) --------------------------------------------------------- */
-
-.hero {
-  display: grid;
-  place-items: center;
-  min-height: 100%;
   padding: 0;
-}
-
-.hero__title {
   font-family: var(--mono);
-  font-size: clamp(40px, 12vmin, 128px);
-  font-weight: 400;
-  letter-spacing: -0.04em;
-  line-height: 1;
-  margin: 0;
-  color: var(--fg);
-  background: transparent;
-  border: 4px solid var(--fg);
-  border-radius: 6px;
-  padding: 0.25em 0.5em;
-  text-align: center;
-  outline: none;
-  caret-color: transparent;
-  width: auto;
+  font-size: 14px;
+  line-height: var(--line-h);
+  color: var(--line);
+  white-space: pre;
+  user-select: none;
+  pointer-events: none;
 }
-.hero__title:focus { outline: none; }
 
-/* --- platební dialog ----------------------------------------------------- */
+/* node labels — různě barevné podle typu */
+.map .n      { color: var(--fg); }
+.map .n--root { color: var(--fg); font-weight: 600; }
+.map .n--dir { color: var(--c-blue); }
+.map .n--doc { color: var(--c-orange); }
+.map .n--code { color: var(--c-green); }
+.map .n--other { color: var(--muted); }
+.map .n--empty { color: var(--muted); opacity: 0.6; }
 
-dialog.pay {
+/* --- klikatelné překryvy nad názvy uzlů ----------------------------------- */
+
+.hits {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hit {
+  position: absolute;
+  height: var(--line-h);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  pointer-events: auto;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px;
+}
+.hit:hover { background: color-mix(in oklab, var(--c-yellow) 30%, transparent); }
+.hit:focus-visible {
+  outline: 2px solid var(--c-blue);
+  outline-offset: 1px;
+}
+.hit--active { background: color-mix(in oklab, var(--c-yellow) 45%, transparent); }
+.hit--focus  {
+  outline: 1px solid var(--c-yellow);
+  outline-offset: 2px;
+}
+
+/* --- záložky (původní HUD pill) ------------------------------------------ */
+
+.tabs {
+  position: fixed;
+  bottom: calc(12px + var(--safe-b));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  background: color-mix(in oklab, var(--bg) 80%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 999px;
   border: 1px solid var(--line);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+}
+.tab {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+  padding: 2px 0;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.tab:hover { color: var(--fg); }
+.tab--active { color: var(--c-yellow); }
+
+/* --- okna s obsahem ------------------------------------------------------ */
+
+.panels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.panel {
+  position: absolute;
   background: var(--bg);
-  color: var(--fg);
-  padding: 0;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  width: min(420px, calc(100vw - 32px));
-  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
-}
-dialog.pay::backdrop {
-  background: rgba(0,0,0,0.4);
-  backdrop-filter: blur(4px);
-}
-
-.pay__form {
-  display: grid;
-  gap: 16px;
-  padding: 20px;
-}
-
-.pay__head {
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
+  overflow: hidden;
+  pointer-events: auto;
+  width: 360px;
+  height: 280px;
+  min-width: 240px;
+  min-height: 140px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px - var(--safe-t) - var(--safe-b));
+  resize: both;
+}
+
+.panel__head {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+  user-select: none;
+  background: color-mix(in oklab, var(--bg) 100%, transparent);
 }
-.pay__head h2 {
-  font-size: 14px;
-  font-weight: 400;
-  margin: 0;
+.panel__head.is-dragging { cursor: grabbing; }
+.panel__path {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
 }
-.pay__close {
+.panel__close {
+  color: var(--muted);
   font-size: 18px;
   line-height: 1;
-  color: var(--muted);
-  padding: 4px 8px;
+  padding: 2px 6px;
+  flex-shrink: 0;
 }
-.pay__close:hover { color: var(--fg); }
+.panel__close:hover { color: var(--fg); }
 
-.pay__body {
-  min-height: 48px;
-  display: grid;
-  gap: 8px;
+.panel__body {
+  padding: 12px;
+  font-size: 13px;
   color: var(--muted);
+  overflow-y: auto;
 }
+.panel__body p { margin: 0 0 8px; }
+.panel__body .empty { font-style: italic; }
 
-.pay__actions {
-  display: flex;
-  justify-content: flex-end;
+/* --- markdown content --- */
+.md { color: var(--fg); line-height: 1.5; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  font-weight: 600;
+  margin: 16px 0 8px;
+  line-height: 1.25;
 }
-.pay__submit {
-  border: 1px solid var(--fg);
-  color: var(--bg);
-  background: var(--fg);
-  padding: 8px 14px;
+.md h1 { font-size: 16px; }
+.md h2 { font-size: 15px; }
+.md h3, .md h4, .md h5, .md h6 { font-size: 14px; color: var(--muted); }
+.md h1:first-child, .md h2:first-child, .md h3:first-child { margin-top: 0; }
+.md p { margin: 0 0 12px; color: var(--fg); }
+.md a { color: var(--c-blue); text-decoration: underline; }
+.md a:hover { color: var(--c-purple); }
+.md ul { margin: 0 0 12px; padding-left: 18px; }
+.md li { margin: 0 0 4px; }
+.md strong { font-weight: 600; }
+.md em { font-style: italic; }
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 16px 0;
+}
+.md code.md-inline {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: color-mix(in oklab, var(--fg) 8%, transparent);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.md pre.md-code {
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  padding: 10px 12px;
   border-radius: 4px;
-  font-weight: 500;
+  overflow-x: auto;
+  margin: 0 0 12px;
 }
-.pay__submit:hover { opacity: 0.9; }
+.md pre.md-code code {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg);
+  background: transparent;
+  padding: 0;
+}

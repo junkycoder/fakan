@@ -1,0 +1,192 @@
+{
+  "name": "fakan.cz",
+  "type": "dir",
+  "children": [
+    {
+      "name": "about",
+      "type": "dir",
+      "children": [
+        {
+          "name": "Bio",
+          "type": "file",
+          "kind": "md",
+          "filename": "bio.md",
+          "slug": "bio",
+          "title": "Bio",
+          "content": "Krátké představení — kdo jste, kde jste, co děláte.\n\nPár vět, ne odstavec. Návštěvník chce vědět, koho má před sebou.\n"
+        },
+        {
+          "name": "CV",
+          "type": "file",
+          "kind": "md",
+          "filename": "cv.md",
+          "slug": "cv",
+          "title": "CV",
+          "content": "## Zkušenosti\n\n- *role* / *firma* / *roky*\n\n## Vzdělání\n\n- *škola* / *obor* / *roky*\n\n## Co umím\n\nKrátký seznam, bez buzzwordů.\n"
+        },
+        {
+          "name": "Hodnoty",
+          "type": "file",
+          "kind": "md",
+          "filename": "hodnoty.md",
+          "slug": "hodnoty",
+          "title": "Hodnoty",
+          "content": "Čemu věřím a podle čeho pracuju.\n\n- *hodnota* — jak se projevuje v praxi\n- *hodnota* — ...\n- *hodnota* — ...\n"
+        }
+      ]
+    },
+    {
+      "name": "contacts",
+      "type": "dir",
+      "children": [
+        {
+          "name": "E-mail",
+          "type": "file",
+          "kind": "md",
+          "filename": "email.md",
+          "slug": "email",
+          "title": "E-mail",
+          "content": "hromadadan@gmail.com\n\nOdpovídám obvykle do 24 hodin.\n"
+        },
+        {
+          "name": "Social",
+          "type": "file",
+          "kind": "md",
+          "filename": "social.md",
+          "slug": "social",
+          "title": "Social",
+          "content": "- [GitHub](https://github.com/) — *odkaz*\n- *síť* — *odkaz*\n- *síť* — *odkaz*\n"
+        },
+        {
+          "name": "Telefon",
+          "type": "file",
+          "kind": "md",
+          "filename": "telefon.md",
+          "slug": "telefon",
+          "title": "Telefon",
+          "content": "Sem patří číslo a kdy je vhodné volat.\n\nPokud preferujete text, ozvěte se přes [E-mail](/contacts/E-mail).\n"
+        }
+      ]
+    },
+    {
+      "name": "diary",
+      "type": "dir",
+      "children": [
+        {
+          "name": "17. 5. 2026",
+          "type": "file",
+          "kind": "md",
+          "filename": "2026-05-17.md",
+          "slug": "2026-05-17",
+          "title": "17. 5. 2026",
+          "content": "První zápis na novém webu.\n\nMindmapa funguje, listy jsou markdown. Příště: panely jako okna, šipková navigace, vytváření souborů z UI.\n"
+        }
+      ]
+    },
+    {
+      "name": "projects",
+      "type": "dir",
+      "children": [
+        {
+          "name": "Archiv",
+          "type": "file",
+          "kind": "md",
+          "filename": "archiv.md",
+          "slug": "archiv",
+          "title": "Archiv",
+          "content": "Starší projekty, krátký výpis.\n\n- *projekt* / *rok* / *role*\n- *projekt* / *rok* / *role*\n- *projekt* / *rok* / *role*\n"
+        },
+        {
+          "name": "fakan.cz",
+          "type": "file",
+          "kind": "md",
+          "filename": "fakan-cz.md",
+          "slug": "fakan-cz",
+          "title": "fakan.cz",
+          "content": "Tento web. Mindmapa bez backendu, kterou píšete přímo úpravou souborů na disku a regenerujete jedním Python skriptem.\n\nListy jsou `.md` s YAML frontmatterem. Větve mohou být veřejné, sdílené odkazem, zamčené heslem nebo zpoplatněné (až bude napojený backend).\n\nZdroj: *odkaz na repo*.\n"
+        }
+      ]
+    },
+    {
+      "name": "services",
+      "type": "dir",
+      "children": [
+        {
+          "name": "Ceník",
+          "type": "file",
+          "kind": "md",
+          "filename": "cenik.md",
+          "slug": "cenik",
+          "title": "Ceník",
+          "content": "| Položka       | Cena      |\n| ------------- | --------- |\n| Konzultace    | *X* Kč/h  |\n| Půldenní blok | *X* Kč    |\n| Projekt       | dohodou   |\n\nFakturuji jako OSVČ, plátce DPH *ano/ne*.\n"
+        },
+        {
+          "name": "Konzultace",
+          "type": "file",
+          "kind": "md",
+          "filename": "konzultace.md",
+          "slug": "konzultace",
+          "title": "Konzultace",
+          "content": "Hodinová konzultace k *tématu, ve kterém pomáháte*.\n\nVhodné pro: *kdo by si měl říct*.\n\nProbíhá online (Meet/Zoom) nebo osobně v Praze.\n"
+        },
+        {
+          "name": "Spolupráce",
+          "type": "file",
+          "kind": "md",
+          "filename": "spoluprace.md",
+          "slug": "spoluprace",
+          "title": "Spolupráce",
+          "content": "Jak vypadá společný projekt:\n\n1. Krátký intro hovor (15 min, zdarma) — zjistíme, jestli si rozumíme.\n2. Návrh rozsahu a ceny.\n3. Práce v dohodnutých milnících.\n4. Předání + faktura.\n\nNepracuju na *čem nepracuju* (krátké pravidlo). Pracuju nejraději s *typem klienta*.\n"
+        }
+      ]
+    },
+    {
+      "name": "texty",
+      "type": "dir",
+      "children": [
+        {
+          "name": "Úvod",
+          "type": "file",
+          "kind": "md",
+          "filename": "uvod.md",
+          "slug": "uvod",
+          "title": "Úvod",
+          "content": "Sem patří delší úvahy — texty, eseje, poznámky.\n\nKrátký úvod, proč píšete a o čem.\n"
+        }
+      ]
+    },
+    {
+      "name": ".gitignore",
+      "type": "file",
+      "kind": "other",
+      "filename": ".gitignore"
+    },
+    {
+      "name": "FOK.md",
+      "type": "file",
+      "kind": "md",
+      "filename": "FOK.md",
+      "slug": "FOK",
+      "title": "",
+      "content": "# $ fok už budu\n\nZáznam do souboru FOK.md\n\n```markdown\n2016\n05\n16:20 už budu\n```\n\nnauč se skill a pak tento soubor přepiš na uvedené výše\n\n"
+    },
+    {
+      "name": "index.html",
+      "type": "file",
+      "kind": "other",
+      "filename": "index.html"
+    },
+    {
+      "name": "script.js",
+      "type": "file",
+      "kind": "other",
+      "filename": "script.js"
+    },
+    {
+      "name": "styles.css",
+      "type": "file",
+      "kind": "other",
+      "filename": "styles.css"
+    }
+  ]
+}
