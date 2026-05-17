@@ -90,6 +90,12 @@
       "filename": "keyboard.js"
     },
     {
+      "name": "LICENSE",
+      "type": "file",
+      "kind": "other",
+      "filename": "LICENSE"
+    },
+    {
       "name": "main.js",
       "type": "file",
       "kind": "text",

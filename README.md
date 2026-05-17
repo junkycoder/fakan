@@ -186,6 +186,8 @@ Píše to spolu Dan Hromada a Claude (Anthropic). Iterace jsou krátké:
 3. Společně doladíme.
 4. Commit s podpisem obou.
 
-Kontakt: [hromadadan@gmail.com](mailto:hromadadan@gmail.com).
+Kontakt: [hromada.dan@gmail.com](mailto:hromada.dan@gmail.com).
 
 Zdroj: [github.com/junkycoder/fakan](https://github.com/junkycoder/fakan).
+
+Licence: [AGPL-3.0](LICENSE) — můžete použít, upravit, hostovat. Pokud z toho uděláte vlastní službu, sdílejte zdroják.
