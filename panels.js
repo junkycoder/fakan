@@ -250,21 +250,29 @@ const _contentFetches = new Map(); // path → Promise
 function nodeNeedsLazyContent(node) {
   if (!node || node.type !== 'file') return false;
   if (node.kind === 'web') return false; // web uzly renderuje iframe přes path
-  if (!node.path) return false;
-  // potřebujeme fetch dokud nemáme originál v paměti, i kdyby uzel měl
-  // override z localStorage (originál slouží jako baseline pro reset).
-  return node._originalRaw == null;
+  if (mediaKind(node)) return false;     // media řeší mountMediaIfNeeded
+  if (node._originalRaw != null) return false;
+  // máme content v paměti (FSA scan / LS override) — fetch už není potřeba
+  if (node.raw != null || node.content != null) return false;
+  // potřebujeme zdroj, ze kterého content dotáhneme: FSA handle nebo HTTP path
+  return !!(node._handle || node.path);
 }
 
 async function ensureNodeContent(node) {
   if (!nodeNeedsLazyContent(node)) return;
-  const path = node.path;
-  if (_contentFetches.has(path)) return _contentFetches.get(path);
+  const key = node.path || (node._handle && node._handle.name) || node.name;
+  if (_contentFetches.has(key)) return _contentFetches.get(key);
   const p = (async () => {
     try {
-      const res = await fetch(encodeURI(path), { cache: 'force-cache' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
+      let text;
+      if (node._handle && typeof node._handle.getFile === 'function') {
+        const file = await node._handle.getFile();
+        text = await file.text();
+      } else {
+        const res = await fetch(encodeURI(node.path), { cache: 'force-cache' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        text = await res.text();
+      }
       node._originalRaw = text;
       // pokud LS override už nastavil content/raw, nepřepisujeme ho fetched verzí
       const hasOverride = node.raw != null || node.content != null;
@@ -281,12 +289,12 @@ async function ensureNodeContent(node) {
         }
       }
     } catch (e) {
-      console.warn('lazy fetch failed', path, e);
-      _contentFetches.delete(path); // dovol retry při dalším otevření
+      console.warn('lazy fetch failed', node.path || node.name, e);
+      _contentFetches.delete(key); // dovol retry při dalším otevření
       throw e;
     }
   })();
-  _contentFetches.set(path, p);
+  _contentFetches.set(key, p);
   return p;
 }
 

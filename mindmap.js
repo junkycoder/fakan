@@ -54,6 +54,9 @@ function fileMeta(child) {
     raw: child.raw,
     url: child.url,
     fetched_at: child.fetched_at,
+    // FSA handle (drag&drop / „Otevřít složku") musí přežít build mindmapy,
+    // jinak panel v rootHandle režimu neumí dotáhnout obsah a padá na fetch.
+    _handle: child._handle,
   };
 }
 
