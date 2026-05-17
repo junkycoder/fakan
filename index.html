@@ -16,6 +16,14 @@
   </main>
 
   <nav class="nav" id="nav" aria-label="Navigace">
+    <div class="nav__source" data-nav-source tabindex="0">
+      <button class="nav__source-btn" type="button" aria-label="Zdroj dat" data-source-btn>
+        <span data-source-label>Zdroj</span>
+        <span class="nav__source-caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="nav__source-dropdown" data-source-menu aria-label="Akce zdroje"></div>
+    </div>
+    <span class="nav__sep" aria-hidden="true"></span>
     <div class="nav__home" data-nav-home tabindex="0">
       <button class="nav__home-btn" type="button" aria-label="Skok na hlavní strom" data-home-btn>~/</button>
       <div class="nav__dropdown" id="nav-dropdown" aria-label="Historie navštívených složek"></div>
@@ -28,12 +36,7 @@
   <div class="panels" id="panels" aria-live="polite"></div>
 
   <div class="empty-state" id="empty-state" data-empty-state>
-    <div class="empty-state__drop">
-      <h1 class="empty-state__title">fakan.cz</h1>
-      <p class="empty-state__hint">Pusťte sem složku, nebo klikněte a vyberte. Soubory zůstávají u vás — fakan jen renderuje strom toho, co mu předhodíte.</p>
-      <button class="empty-state__btn" type="button" data-empty-pick>Otevřít složku</button>
-      <p class="empty-state__note">Vyžaduje Chrome, Edge nebo Brave. Safari a Firefox zatím File System Access API nepodporují.</p>
-    </div>
+    <div class="empty-state__inner" data-empty-hint></div>
   </div>
 
   <script src="script.js" type="module"></script>

@@ -1729,7 +1729,63 @@ async function loadFromHandle(handle) {
   return tree;
 }
 
-// --- empty state + drop / pick ----------------------------------------------
+// --- IndexedDB persist: FileSystemDirectoryHandle ---------------------------
+// Chrome / Edge dovolí persist FSA handle. Po reloadu queryPermission() typicky
+// vrátí 'prompt' → uživatel musí re-grantnout přes user gesture (jedním klikem).
+
+const IDB_NAME = 'fakan';
+const IDB_STORE = 'handles';
+const IDB_KEY = 'rootHandle';
+
+function idbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSetHandle(handle) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).put(handle, IDB_KEY);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { console.warn('idb persist failed', e); }
+}
+
+async function idbGetHandle() {
+  try {
+    const db = await idbOpen();
+    const handle = await new Promise((res, rej) => {
+      const tx = db.transaction(IDB_STORE, 'readonly');
+      const req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+      req.onsuccess = () => res(req.result);
+      req.onerror = () => rej(req.error);
+    });
+    db.close();
+    return handle || null;
+  } catch (e) { return null; }
+}
+
+async function idbClearHandle() {
+  try {
+    const db = await idbOpen();
+    await new Promise((res) => {
+      const tx = db.transaction(IDB_STORE, 'readwrite');
+      tx.objectStore(IDB_STORE).delete(IDB_KEY);
+      tx.oncomplete = res;
+    });
+    db.close();
+  } catch {}
+}
+
+// --- zdroj: mount / unmount / restore --------------------------------------
 
 let rootHandle = null;
 
@@ -1743,13 +1799,37 @@ function hideEmptyState() {
   if (overlay) overlay.hidden = true;
 }
 
-function setupEmptyState() {
+function renderEmptyHint(state) {
+  const inner = document.querySelector('[data-empty-hint]');
+  if (!inner) return;
+  inner.innerHTML = '';
+  if (state && state.needsPermission && state.handle) {
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'empty-state__rest';
+    restore.textContent = `Otevřít poslední: ${state.handle.name}`;
+    restore.addEventListener('click', async () => {
+      try {
+        const perm = await state.handle.requestPermission({ mode: 'readwrite' });
+        if (perm === 'granted') await loadAndMount(state.handle, { persist: false });
+        else alert('Bez povolení nemůžu složku otevřít. Pusťte ji sem znovu, nebo zvolte přes Zdroj ▾.');
+      } catch (e) { console.error(e); }
+    });
+    inner.appendChild(restore);
+    const note = document.createElement('p');
+    note.className = 'empty-state__note';
+    note.textContent = 'Nebo pusťte jinou složku sem.';
+    inner.appendChild(note);
+    return;
+  }
+  const p = document.createElement('p');
+  p.innerHTML = 'Bez zdroje. Pusťte sem složku nebo otevřete přes <kbd>Zdroj</kbd> v menu.';
+  inner.appendChild(p);
+}
+
+function setupDropZone() {
   const overlay = document.getElementById('empty-state');
   if (!overlay) return;
-  const btn = overlay.querySelector('[data-empty-pick]');
-  if (btn) btn.addEventListener('click', openDirectoryPicker);
-
-  // drag-drop kdekoli na okně — overlay vizuálně podsvítí, drop se akceptuje vždy
   const hasFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
   const onDragOver = (e) => {
     if (!hasFiles(e)) return;
@@ -1798,7 +1878,7 @@ async function openDirectoryPicker() {
   await loadAndMount(handle);
 }
 
-async function loadAndMount(handle) {
+async function loadAndMount(handle, opts = {}) {
   try {
     const tree = await loadFromHandle(handle);
     rootHandle = handle;
@@ -1807,9 +1887,94 @@ async function loadAndMount(handle) {
     recenterHistory = [];
     hideEmptyState();
     rebuildMindmap('');
+    renderSourceMenu();
+    if (opts.persist !== false) await idbSetHandle(handle);
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
+  }
+}
+
+async function disconnectSource() {
+  await idbClearHandle();
+  rootHandle = null;
+  originalTree = null;
+  currentRootPath = '';
+  recenterHistory = [];
+  treeNodes = [];
+  currentBbox = null;
+  byPath.clear();
+  childrenByPath.clear();
+  topQuadrant.clear();
+  // zavřít všechny panely
+  if (mainPanel) closePanel(mainPanel);
+  for (const p of Array.from(previewPanels.values())) closePanel(p);
+  // smazat render
+  const map = document.getElementById('map');
+  const labels = document.getElementById('labels');
+  const hits = document.getElementById('hits');
+  if (map) map.textContent = '';
+  if (labels) labels.innerHTML = '';
+  if (hits) hits.innerHTML = '';
+  if (routeNavListener) routeNavListener();
+  renderEmptyHint(null);
+  showEmptyState();
+  renderSourceMenu();
+}
+
+async function tryRestoreSource() {
+  const handle = await idbGetHandle();
+  if (!handle) return false;
+  try {
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      await loadAndMount(handle, { persist: false });
+      return true;
+    }
+    renderEmptyHint({ needsPermission: true, handle });
+    return false;
+  } catch (e) {
+    console.warn('restore source: queryPermission failed', e);
+    renderEmptyHint({ needsPermission: true, handle });
+    return false;
+  }
+}
+
+// --- zdrojové menu v navu ---------------------------------------------------
+
+function renderSourceMenu() {
+  const label = document.querySelector('[data-source-label]');
+  const menu = document.querySelector('[data-source-menu]');
+  if (label) label.textContent = rootHandle ? rootHandle.name : 'Zdroj';
+  if (!menu) return;
+  menu.innerHTML = '';
+
+  const items = [];
+  items.push({
+    label: rootHandle ? 'Otevřít jinou složku…' : 'Otevřít složku…',
+    onClick: openDirectoryPicker,
+  });
+  items.push({ label: 'Připojit GitHub repo…', disabled: true, title: 'Brzy' });
+  items.push({ label: 'Export…', disabled: true, title: 'Brzy' });
+  if (rootHandle) {
+    items.push({ label: 'Odpojit zdroj', onClick: disconnectSource, danger: true });
+  }
+
+  for (const it of items) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'nav__source-item' + (it.danger ? ' nav__source-item--danger' : '');
+    b.textContent = it.label;
+    if (it.title) b.title = it.title;
+    if (it.disabled) b.disabled = true;
+    if (it.onClick) b.addEventListener('click', () => {
+      // zavři dropdown po výběru
+      const wrap = document.querySelector('[data-nav-source]');
+      wrap?.classList.remove('is-open');
+      if (document.activeElement && wrap?.contains(document.activeElement)) document.activeElement.blur();
+      it.onClick();
+    });
+    menu.appendChild(b);
   }
 }
 
@@ -1863,8 +2028,12 @@ async function boot() {
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
 
-  setupEmptyState();
+  setupDropZone();
+  renderSourceMenu();
+  renderEmptyHint(null);
   showEmptyState();
+  // pokus o restore z IndexedDB — pokud uspěje, schová empty hint sám
+  tryRestoreSource();
 }
 
 boot().catch((err) => {
