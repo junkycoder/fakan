@@ -340,6 +340,8 @@ function tokenizeCss(lines) {
         i = j + 1; continue;
       }
       if (!inBlock) {
+        // čárka mezi selektory — vlastní token, ať tokenizer pokročí
+        if (c === ',') { tokens.push({ t: c, cls: 'tok-pun' }); i++; continue; }
         // selektor až do { nebo ,
         let j = i;
         while (j < line.length && line[j] !== '{' && line[j] !== ',' && !(line[j] === '/' && line[j + 1] === '*')) j++;
@@ -347,6 +349,7 @@ function tokenizeCss(lines) {
         // rozlišit . # @ : tag
         if (seg.trim()) tokens.push({ t: seg, cls: 'tok-sel' });
         else tokens.push({ t: seg });
+        if (j === i) { tokens.push({ t: line[i] }); i++; continue; }
         i = j; continue;
       }
       // uvnitř bloku: key : value ;
