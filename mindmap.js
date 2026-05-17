@@ -6,6 +6,7 @@ import {
   CHAR_W, LINE_H, ROOT_SCALE, DIR_QUADRANT,
   escapeHtml, cssEscapePath, loadAllEditOverrides,
 } from './state.js';
+import { syncFromState } from './url.js';
 
 // --- char grid (Map<"r|c", {n,s,e,w}>) + nodes -------------------------------
 
@@ -589,7 +590,9 @@ export function rebuildMindmap(focusPath) {
   }
 }
 
-export function recenter(path) {
+// recenter — třetí parametr { silent } přeskočí URL sync (init z URL si volá
+// recenter sám, URL už je nastavena).
+export function recenter(path, { silent = false } = {}) {
   const next = path || '';
   if (next === state.currentRootPath) return;
   // ulož předchozí root do historie (dedup, cap)
@@ -603,6 +606,7 @@ export function recenter(path) {
   state.currentRootPath = next;
   rebuildMindmap();
   if (state.routeNavListener) state.routeNavListener();
+  if (!silent) syncFromState();
 }
 
 export function removeFromHistory(path) {

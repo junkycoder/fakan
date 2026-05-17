@@ -10,7 +10,7 @@ import {
   setupDropZone, renderSourceMenu, mountBadge, renderEmptyHint, showEmptyState,
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadStaticTree,
 } from './sources.js';
-import { urlToPath, findNodeByPath, syncUrl } from './url.js';
+import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -77,31 +77,47 @@ export async function boot() {
   window.addEventListener('popstate', initFromUrl);
 }
 
-// Aplikuje URL na state: recenter na rodiče souboru + openMain.
-// Tolerantní — neexistující cestu nebo dir prostě ignoruje.
+// Aplikuje URL na state. Volá se při bootu i z popstate.
+// Tolerantní — neznámou cestu prostě ignoruje (URL nech, user uvidí home).
+//
+// Trailing slash = dir-only stav (recenter, žádný panel).
+// Bez slashe = file (recenter na rodiče + openMain).
 function initFromUrl() {
-  const path = urlToPath();
+  const { path, isDir } = parseUrl();
+
+  // 1) prázdná cesta — návrat na home
   if (!path) {
-    // návrat na /: zavři main panel, vrať mindmapu na home
     if (state.mainPanel) closePanel(state.mainPanel);
-    if (state.currentRootPath) recenter('');
+    if (state.currentRootPath) recenter('', { silent: true });
     return;
   }
+
   const node = findNodeByPath(state.originalTree, path);
-  if (!node || node.type !== 'file') {
-    // neznámá cesta nebo dir — necháme být, URL ponecháme, user uvidí home
+  if (!node) return;
+
+  // 2) dir-only stav (URL končí slashem nebo node je dir)
+  if (isDir || node.type === 'dir' || node.type === 'root') {
+    if (state.mainPanel) closePanel(state.mainPanel);
+    const target = node.type === 'root' ? '' : path;
+    if (state.currentRootPath !== target) recenter(target, { silent: true });
     return;
   }
+
+  // 3) file — recenter na rodiče, openMain
+  if (node.type !== 'file') return;
   const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-  recenter(parent);
+  if (state.currentRootPath !== parent) recenter(parent, { silent: true });
   const fresh = state.byPath.get(path) || node;
-  // pokud už main panel sedí na cílový soubor (popstate na stejnou URL), jen refocus
   if (state.mainPanel && state.mainPanel.path === path) {
     focusNode(fresh);
     return;
   }
+  // pokud je otevřený jiný main, zavři ho — openMain to dělá taky, ale chceme
+  // se vyhnout duplikátní pushState v jeho odchodu
   openMain(fresh);
   focusNode(fresh);
-  // pojistka: openMain volá syncUrl, ale pokud byl path identický, mohl by chybět
-  syncUrl(path);
+  // openMain volá syncFromState (pushState). Pokud popstate dorazil ze stejné
+  // URL, pushState by ji opakovat nemělo (computeUrl je deterministický).
+  // Pro jistotu URL přerovnej replaceState — žádný extra history entry.
+  replaceUrl(state.currentRootPath, state.mainPanel?.path || '');
 }
