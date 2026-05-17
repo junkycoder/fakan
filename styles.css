@@ -1135,6 +1135,15 @@ button {
   padding: 0 2px;
 }
 .badge__meta:hover { color: var(--fg); }
+.badge__meta-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.badge__meta-sep {
+  font-size: 10px;
+  color: var(--muted);
+}
 
 @media (max-width: 640px) {
   .badge {
