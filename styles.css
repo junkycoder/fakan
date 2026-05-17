@@ -1300,6 +1300,8 @@ button {
   display: flex;
   gap: 6px;
   align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 .badge__meta-sep {
   font-size: 10px;

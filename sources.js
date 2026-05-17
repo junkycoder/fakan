@@ -1469,6 +1469,8 @@ export function mountBadge() {
       <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="mailto:hromada.dan@gmail.com">mail</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
+      <a class="badge__meta" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0</a>
     </div>
   `;
   wrap.removeAttribute('hidden');
