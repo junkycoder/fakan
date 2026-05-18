@@ -466,6 +466,8 @@ button {
 }
 .panel__btn:hover { color: var(--fg); background: color-mix(in oklab, var(--fg) 8%, transparent); }
 .panel__btn--play.is-active { color: var(--c-green); }
+.panel__btn--dock.is-active,
+.panel__btn--max.is-active { color: var(--c-yellow); }
 .panel__btn--close:hover { color: var(--c-red); }
 
 /* zobrazení zdroje */
@@ -1686,33 +1688,34 @@ button {
   min-width: 220px;
   max-width: 90vw;
 }
-.src-loader__spinner {
-  font-family: var(--mono);
-  font-size: 32px;
-  line-height: 1;
-  margin: 0;
-  color: var(--c-yellow);
-  width: 1ch;
+.src-loader__bar {
+  position: relative;
+  width: 24ch;
+  max-width: 80vw;
   height: 1em;
-  animation: src-loader-spin 1.1s steps(1) infinite;
+  font-family: var(--mono);
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: 0;
+  overflow: hidden;
+  white-space: pre;
 }
-@keyframes src-loader-spin {
-  0%   { content: ""; }
+.src-loader__bar::before {
+  content: "████████████████████████████████";
+  display: block;
+  color: color-mix(in oklab, var(--fg) 14%, transparent);
 }
-.src-loader__spinner::before {
-  content: "";
-  display: inline-block;
-  animation: src-loader-glyph 0.96s steps(1) infinite;
+.src-loader__bar::after {
+  content: "████████";
+  position: absolute;
+  inset: 0 auto 0 0;
+  color: var(--c-yellow);
+  animation: src-loader-bar 1.4s linear infinite;
+  will-change: transform;
 }
-@keyframes src-loader-glyph {
-  0%    { content: "├"; }
-  12.5% { content: "┬"; }
-  25%   { content: "┤"; }
-  37.5% { content: "┴"; }
-  50%   { content: "┼"; }
-  62.5% { content: "─"; }
-  75%   { content: "│"; }
-  87.5% { content: "┼"; }
+@keyframes src-loader-bar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }
 .src-loader__label {
   font-size: 13px;
