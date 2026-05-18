@@ -13,6 +13,7 @@ import {
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain, maybeOpenDefaultIndex } from './panels.js';
+import { showSearchDialog } from './search.js';
 
 // --- FS Access API: walk dropnuté / vybrané složky ---------------------------
 // Funguje v Chromu / Edge / Brave. Safari + Firefox zatím FS Access API nemají.
@@ -2035,6 +2036,8 @@ export function mountBadge() {
   if (!wrap) return;
   wrap.innerHTML = `
     <div class="badge__meta-row">
+      <a class="badge__meta" href="#" data-badge-search>hledat</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="#" data-badge-help>help</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="#" data-badge-tip>přispět</a>
@@ -2045,6 +2048,10 @@ export function mountBadge() {
     </div>
   `;
   wrap.removeAttribute('hidden');
+  wrap.querySelector('[data-badge-search]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showSearchDialog();
+  });
   wrap.querySelector('[data-badge-tip]').addEventListener('click', (e) => {
     e.preventDefault();
     showTipDialog();

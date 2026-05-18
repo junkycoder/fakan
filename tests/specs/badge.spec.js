@@ -10,7 +10,7 @@ test.describe('Badge meta', () => {
 
   test('obsahuje meta odkazy ve správném pořadí', async ({ page }) => {
     const labels = await page.locator(`${SEL.badge} a`).allTextContents();
-    expect(labels).toEqual(['help', 'přispět', 'github', 'kontakt']);
+    expect(labels).toEqual(['hledat', 'help', 'přispět', 'github', 'kontakt']);
   });
 
   test('github link vede na junkycoder/fakan a otevírá se v novém tabu', async ({ page }) => {
