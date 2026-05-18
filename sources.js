@@ -1956,6 +1956,8 @@ export function mountBadge() {
   if (!wrap) return;
   wrap.innerHTML = `
     <div class="badge__meta-row">
+      <a class="badge__meta" href="#" data-badge-help>help</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="#" data-badge-tip>přispět</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
@@ -1968,6 +1970,125 @@ export function mountBadge() {
     e.preventDefault();
     showTipDialog();
   });
+  wrap.querySelector('[data-badge-help]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showHelpDialog();
+  });
+}
+
+// --- Help dialog -----------------------------------------------------------
+
+function showHelpDialog() {
+  document.querySelector('[data-help-dialog]')?.remove();
+
+  const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent || '');
+  const mod = isMac ? '⌘' : 'Ctrl';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'help-dialog';
+  wrap.setAttribute('data-help-dialog', '');
+  wrap.innerHTML = `
+    <div class="help-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="help-title">
+      <button type="button" class="help-dialog__close" data-help-close aria-label="Zavřít">×</button>
+      <div class="help-dialog__scroll">
+        <h2 class="help-dialog__title" id="help-title">Jak na fakana</h2>
+
+        <p class="help-dialog__lede">
+          Mindmapa pro procházení vašich poznámek, projektů a kódu jako stromu na monospace
+          gridu. Místo file manageru nebo blogu — jedna obrazovka, všechno na očích, vše dosažitelné
+          ze šipek.
+        </p>
+
+        <h3>K čemu se to hodí</h3>
+        <ul>
+          <li><b>Druhý mozek na webu.</b> Markdown poznámky, deník, kontakty, projekty — vše z jednoho repa, sdíleno linkem.</li>
+          <li><b>Portfolio bez CMS.</b> Strom souborů v GitHub repu = veřejný web. Žádný build, žádný editor.</li>
+          <li><b>Procházení cizích repů.</b> Vložte <code>github:owner/repo</code> a koukněte se na strom v mapě místo v ascii <code>tree</code>.</li>
+          <li><b>Lokální browsing.</b> Připojte složku přes File System handle a používejte fakana jako čtečku/navigátor přes vlastní disk.</li>
+        </ul>
+
+        <h3>Základní ovládání</h3>
+        <table class="help-dialog__keys">
+          <tr><td><kbd>←</kbd> <kbd>↓</kbd> <kbd>↑</kbd> <kbd>→</kbd> &nbsp; (nebo <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd>)</td><td>pohyb po stromě podle kvadrantu</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>otevřít soubor v hlavním panelu / na složce recenter</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>soubor: jediné okno (zavře ostatní). Složka: recenter.</td></tr>
+          <tr><td><kbd>Space</kbd></td><td>follower preview vedle focusu (sleduje pohyb šipkami)</td></tr>
+          <tr><td><kbd>Space</kbd> 2×</td><td>zavře follower preview</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>zavřít nejvyšší panel</td></tr>
+          <tr><td><kbd>0</kbd></td><td>vrátit mapu na střed (pohled na celý strom)</td></tr>
+        </table>
+
+        <h3>Hierarchická navigace (jako browser back/forward)</h3>
+        <table class="help-dialog__keys">
+          <tr><td><kbd>${mod}</kbd>+<kbd>←</kbd></td><td>o úroveň výš (parent složka); na rootu recenter na rodičovský strom</td></tr>
+          <tr><td><kbd>${mod}</kbd>+<kbd>→</kbd></td><td>o úroveň níž (první potomek); vrací forward stack po Cmd+←</td></tr>
+          <tr><td>klik na <code>~/</code></td><td>zpátky na hlavní strom</td></tr>
+        </table>
+
+        <h3>Panely a taby</h3>
+        <table class="help-dialog__keys">
+          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>zavřít aktivní panel</td></tr>
+          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>[</kbd> / <kbd>]</kbd></td><td>cyklit mezi taby</td></tr>
+          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>skok na n-tý panel</td></tr>
+          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>maximalizovat aktivní panel</td></tr>
+          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td><td>otevřít aktuální focus jako follower preview</td></tr>
+        </table>
+
+        <h3>Zdroje dat</h3>
+        <p>
+          V dolní liště („Zdroj“) přepínáte odkud fakan čte strom:
+        </p>
+        <ul>
+          <li><b>GitHub repo</b> — <code>github:owner/repo[@branch]</code>. Veřejné fungují anonymně, na soukromé zadejte token.</li>
+          <li><b>Lokální složka</b> — File System Access API (Chrome/Edge/Arc). Strom se promítá živě z disku.</li>
+          <li><b>Snapshot</b> — nahraný ZIP/složka. Read-only, hodí se na demo nebo offline procházení.</li>
+        </ul>
+        <p>Nedávno použité zdroje najdete v menu „Zdroj“. <b>Git Publish</b> commitne změny do GitHub repa rovnou z UI.</p>
+
+        <h3>Mapa — jak se kreslí</h3>
+        <p>
+          Top-level složky se rozdělí do čtyř kvadrantů podle smyslu obsahu:
+        </p>
+        <ul>
+          <li><b>↑ nahoru</b> — <code>diary</code>, <code>texty</code>, <code>notes</code>, <code>blog</code>, <code>.md</code> v rootu</li>
+          <li><b>↓ dolů</b> — <code>projects</code>, <code>design</code>, <code>work</code>, <code>prace</code></li>
+          <li><b>→ doprava</b> — <code>code</code>, <code>src</code>, <code>infra</code>, dotfiles, zdrojáky</li>
+          <li><b>← doleva</b> — <code>about</code>, <code>contacts</code>, <code>kontakt</code>, <code>services</code>, <code>ja</code></li>
+        </ul>
+
+        <h3>Tipy pro flow</h3>
+        <ul>
+          <li><b>Rychlá orientace.</b> Stiskněte <kbd>0</kbd> kdykoli se ztratíte — uvidíte celou mapu.</li>
+          <li><b>Čtení deníku.</b> Šipka nahoru, pak <kbd>Space</kbd>. Šipky teď listují den po dni a follower se sám obnovuje.</li>
+          <li><b>Hluboký podstrom.</b> Šipkou se postavte na složku, <kbd>Enter</kbd> = recenter. Mapa se přepne, jako byste vstoupili dovnitř. <kbd>${mod}</kbd>+<kbd>←</kbd> zpátky.</li>
+          <li><b>Side-by-side.</b> <kbd>Enter</kbd> otevře main panel, <kbd>Space</kbd> přidá preview vedle. Můžete porovnávat poznámky.</li>
+          <li><b>Vlastní web během minuty.</b> Forkněte si content repo, přepněte zdroj na něj, sdílejte URL.</li>
+        </ul>
+
+        <h3>Drobnosti</h3>
+        <ul>
+          <li>Klik na název složky = recenter, klik na soubor = otevřít v hlavním panelu.</li>
+          <li>Klávesnice nefunguje, když píšete do editoru — zaměřte mapu (klik mimo input nebo <kbd>Esc</kbd>).</li>
+          <li>URL v adrese se synchronizuje se stavem — link funguje jako záložka přesně na ten uzel.</li>
+        </ul>
+      </div>
+      <div class="help-dialog__buttons">
+        <button type="button" class="help-dialog__btn" data-help-close>Zavřít</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelectorAll('[data-help-close]').forEach((b) => b.addEventListener('click', close));
 }
 
 // --- Tip dialog (QR Platba) -------------------------------------------------

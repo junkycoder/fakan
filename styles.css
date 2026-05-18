@@ -1468,6 +1468,144 @@ button {
   padding: 5px 10px;
 }
 
+/* --- Help dialog --------------------------------------------------------- */
+.help-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+.help-dialog__panel {
+  position: relative;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: min(680px, 100%);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  font-family: var(--mono);
+}
+.help-dialog__close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.help-dialog__close:hover { color: var(--fg); background: color-mix(in oklab, var(--c-red) 18%, transparent); }
+.help-dialog__scroll {
+  overflow-y: auto;
+  padding: 26px 28px 8px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.help-dialog__title {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.help-dialog__lede {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.help-dialog__scroll h3 {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-yellow);
+  letter-spacing: 0.02em;
+}
+.help-dialog__scroll p { margin: 0 0 10px; }
+.help-dialog__scroll ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+.help-dialog__scroll li { margin: 2px 0; }
+.help-dialog__scroll code {
+  font-family: inherit;
+  background: color-mix(in oklab, var(--c-yellow) 18%, transparent);
+  color: var(--fg);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+.help-dialog__scroll kbd {
+  font-family: inherit;
+  font-size: 11px;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--fg) 4%, transparent);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.help-dialog__keys {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+.help-dialog__keys td {
+  padding: 4px 8px 4px 0;
+  vertical-align: top;
+}
+.help-dialog__keys td:first-child {
+  white-space: nowrap;
+  width: 1%;
+  color: var(--fg);
+}
+.help-dialog__keys td:last-child {
+  color: var(--muted);
+  padding-left: 12px;
+}
+@media (max-width: 520px) {
+  .help-dialog__keys { display: block; }
+  .help-dialog__keys tbody { display: block; }
+  .help-dialog__keys tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 10px; }
+  .help-dialog__keys td { display: inline; padding: 0; width: auto; }
+  .help-dialog__keys td:first-child { white-space: normal; flex: 0 0 100%; }
+  .help-dialog__keys td:last-child { padding: 0; flex: 1 1 100%; }
+}
+.help-dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 28px 18px;
+  border-top: 1px solid var(--line);
+}
+.help-dialog__btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.help-dialog__btn:hover {
+  background: color-mix(in oklab, var(--c-yellow) 20%, transparent);
+  border-color: var(--c-yellow);
+}
+
 /* --- floating badge ------------------------------------------------------ */
 .badge {
   position: fixed;
