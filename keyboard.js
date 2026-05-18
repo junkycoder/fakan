@@ -150,6 +150,8 @@ export function setupKeyboard(_unused, vp) {
       k: 'up', j: 'down', h: 'left', l: 'right',
     };
     if (e.key in dirMap) {
+      // Cmd/Ctrl/Alt + šipka = nech prohlížeči (Cmd+← = zpět v historii apod.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       e.preventDefault();
       const dir = dirMap[e.key];
       const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
