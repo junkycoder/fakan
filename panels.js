@@ -822,6 +822,19 @@ export function openMainOnly(node) {
   openMain(node);
 }
 
+// Default open: po načtení zdroje nebo bootu otevři kořenový index.html,
+// pokud existuje a nic jiného není otevřené. URL musí být `/` — jinak by
+// se přepsal deep link (`/foo.md`, `/projects/`) z fresh boot, kde mount
+// běží dřív než initFromUrl.
+export function maybeOpenDefaultIndex() {
+  if (state.mainPanel) return;
+  if (state.currentRootPath) return;
+  if (window.location.pathname !== '/') return;
+  const idx = state.byPath.get('index.html');
+  if (!idx || idx.type !== 'file') return;
+  openMain(idx);
+}
+
 export function openMain(node) {
   if (state.mainPanel) {
     if (state.mainPanel === state.activePanel) state.activePanel = null;

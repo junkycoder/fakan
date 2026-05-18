@@ -4,6 +4,7 @@ import { state } from './state.js';
 import { setupViewport, focusNode, recenter, restoreRecenterHistory, revealMore } from './mindmap.js';
 import {
   renderNav, openMain, openMainOnly, openAsFollower, closePanel,
+  maybeOpenDefaultIndex,
 } from './panels.js';
 import { setupKeyboard } from './keyboard.js';
 import {
@@ -81,6 +82,7 @@ export async function boot() {
   })();
   restoreRecenterHistory();
   initFromUrl();
+  maybeOpenDefaultIndex();
   window.addEventListener('popstate', initFromUrl);
 }
 

@@ -12,7 +12,7 @@ import {
   applyTreeOps, clearGhBaseline,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
-import { closePanel, openMain } from './panels.js';
+import { closePanel, openMain, maybeOpenDefaultIndex } from './panels.js';
 
 // --- FS Access API: walk dropnuté / vybrané složky ---------------------------
 // Funguje v Chromu / Edge / Brave. Safari + Firefox zatím FS Access API nemají.
@@ -856,6 +856,7 @@ async function loadAndMount(handle, opts = {}) {
     state.recenterHistory = [];
     hideEmptyState();
     rebuildMindmap('');
+    maybeOpenDefaultIndex();
     renderSourceMenu();
     if (opts.persist !== false) await idbSetHandle(handle);
     await idbClearGithubSpec();
@@ -881,6 +882,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     state.recenterHistory = [];
     hideEmptyState();
     rebuildMindmap('');
+    maybeOpenDefaultIndex();
     renderSourceMenu();
     if (opts.persist !== false) await idbSetSnapshot(tree);
     await idbClearHandle();
@@ -904,6 +906,7 @@ async function connectGithub(spec, onStatus) {
     state.recenterHistory = [];
     hideEmptyState();
     rebuildMindmap('');
+    maybeOpenDefaultIndex();
     renderSourceMenu();
     await idbSetGithubSpec(spec);
     await idbClearHandle();
