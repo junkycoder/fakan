@@ -63,10 +63,11 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 
 ## Stack
 
-- `index.html` + ES module JS (`main.js` → `boot.js` + `mindmap.js`, `panels.js`, `keyboard.js`, `sources.js`, `state.js`, `url.js`, `editor.js`) + `styles.css` — bez frameworku
+- `index.html` + ES module JS + `styles.css` — bez frameworku. Závislosti modulů: `main.js` → `boot.js`; `boot.js` orchestruje `keyboard.js`, `panels.js`, `mindmap.js`, `sources.js`, `url.js`, `editor.js`, `search.js`; všichni sdílí `state.js` (singleton, žádné cykly).
 - Cloudflare Worker `fakan-cz` se Static Assets bindingem (`not_found_handling: "single-page-application"` = SPA fallback) — GitHub repo `junkycoder/fakan`
 - **Dev vs prod SPA fallback se liší!** Worker fallbackuje na 404 z asset map (cokoli, co není v `dist/` → `index.html`). `bin/serve.py` fallbackuje na Accept hlavičce (`text/html` → `index.html`, jinak normal 404). Stejné chování pro user-facing nav, ale lze zde najít drift při testech serving binárek / atypických mime typů
-- Deploy: `bash bin/build.sh && CLOUDFLARE_ACCOUNT_ID=1fb320ef69377e04c649dcc880044f71 wrangler deploy` (build kopíruje produkční soubory do `dist/`)
+- Deploy: `bash bin/build.sh && CLOUDFLARE_ACCOUNT_ID=1fb320ef69377e04c649dcc880044f71 wrangler deploy` (build kopíruje `index.html`, `styles.css`, všechny `*.js` z rootu a `vendor/` do `dist/`)
+- CI: `.github/workflows/test.yml` — Playwright e2e na push/PR (`tests/`, chromium). Pří selhání uploadne `playwright-report` artefakt.
 - Content fetchnutý za běhu z konfigurovaného GitHub repa (default `junkycoder/fakan.cz`); user může v UI přepnout na vlastní FS handle / GitHub repo / nahraný snapshot — všechny zdroje žijí v IDB
 
 ## Architektura — klíčové věci, co je dobré znát
@@ -96,10 +97,20 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 Pokud content repo přidá novou top-level složku jiného jména, fallback je SOUTH. Pokud má smysl jinam, doplň do `DIR_QUADRANT` v `mindmap.js`.
 
 **Klávesnice:**
-- Šipky = tree-nav per kvadrant (parent/child/siblings, mapování v `QUAD_ACTIONS`)
+- Šipky / `h j k l` = tree-nav per kvadrant (parent/child/siblings, mapování v `QUAD_ACTIONS`)
 - `Enter` = main, `Space` = follower preview (2× zavře), `Shift+Enter` na dir = recenter
 - `Cmd/Ctrl+Shift+W` = close active, `[ ]` cyklus tabů, `1..9` skok, `M` max, `N` preview
+- `Cmd/Ctrl+←/→` = URL hierarchie (parent / forward stack) napříč kvadranty
+- `Shift+H/J/K/L` = dock aktivního panelu vlevo/dolů/nahoru/vpravo (toggle — druhý stisk vrátí pozici)
+- `Cmd/Ctrl+K` = otevřít globální hledání (`search.js`, najde v názvech i obsahu)
 - `0` = vrátit mapu domů, `Esc` = zavřít poslední panel
+
+**Panely a dock** (`panels.js`):
+- `dockPanel(panel, zone)` — `zone ∈ 'left' | 'right' | 'top' | 'bottom' | 'full'`
+- `DOCK_ZONES` definují cílové `left/top/right/bottom/width/height` (50vw nebo 50dvh, respektují `--safe-t/--safe-b` notch)
+- Druhý stisk stejného směru zavolá `restorePanel` (vrátí původní geometrii)
+- Plný režim (`full`) přes `Shift+M` (toggleMax), směrový dock přes Shift+HJKL nebo drag-to-edge
+- DOM kompozice: `index.html` má `<main.canvas>` (mapa + labels + hits), `<nav>` (zdroj / git / home / taby), `<.panels>` kontejner pro okna, `<.empty-state>`, `<.src-loader>` (žlutý ASCII bar) a `<.badge>`
 
 ## Styl & tonalita
 
@@ -141,22 +152,26 @@ fakan/
 ├── main.js                entrypoint, importuje boot.js
 ├── boot.js                DOMContentLoaded sekvence, URL routing
 ├── mindmap.js             char-grid layout, render, klasifikace kvadrantů
-├── panels.js              okenní stav, taby, nav, .md/.html viewer
-├── keyboard.js            klávesnice (šipky, Enter, Space, Cmd+W, …)
-├── sources.js             zdroje (FS handle / GitHub / snapshot), IDB, badge
+├── panels.js              okenní stav, dock, taby, nav, .md/.html viewer
+├── keyboard.js            klávesnice (šipky, Enter, Space, Cmd+W, Shift+HJKL, …)
+├── sources.js             zdroje (FS handle / GitHub / snapshot), IDB, badge, loader
 ├── state.js               sdílený module-level state
 ├── url.js                 URL ↔ state sync
 ├── editor.js              md editor
-├── styles.css             paleta, layout, panely, nav
+├── search.js              globální hledání (názvy + obsah, Cmd/Ctrl+K nebo badge „hledat")
+├── styles.css             paleta, layout, panely, nav, dock zóny
 ├── README.md              produktová vize + roadmapa
 ├── CLAUDE.md              tenhle soubor
 ├── FOK.md                 logovník mezi sessionemi
+├── .fokrc                 glob patterny pro skrývání entries v mindmapě
 ├── wrangler.jsonc         Cloudflare Worker config (assets + SPA fallback)
+├── .github/workflows/     CI (test.yml = Playwright e2e na push/PR)
 ├── bin/
 │   ├── build.sh           kopíruje produkční soubory do dist/ pro wrangler deploy
 │   └── serve.py           lokální dev server (SPA fallback)
-├── tests/                 Playwright e2e
-├── promo/                 screenshoty pro README/landing
+├── dist/                  build output (gitignored, generovaný `bin/build.sh`)
+├── tests/                 Playwright e2e (vlastní package.json, `npm test`)
+├── promo/                 screenshoty pro README/landing (`npm run promo`)
 ├── mobile/                Capacitor iOS shell (vlastní package.json)
 │   ├── package.json       @capacitor/{core,cli,ios}
 │   ├── capacitor.config.json (appId: cz.fakan.app, webDir: ../dist)
