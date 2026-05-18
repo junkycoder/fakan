@@ -178,6 +178,11 @@ function openByHref(href, sourcePath, mods) {
   }
   if (!node && !path) node = state.byPath.get('');
   if (!node) return;
+  // link na složku / root → recentruj mapu místo otevírání prázdného panelu
+  if (node.type === 'root' || node.type === 'dir') {
+    recenter(node.path || '');
+    return;
+  }
   if (mods && mods.shift) openMainOnly(node);
   else if (mods && (mods.meta || mods.ctrl)) openAsFollower(node);
   else openMain(node);
