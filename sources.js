@@ -9,7 +9,7 @@ import {
   LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
-  applyTreeOps,
+  applyTreeOps, clearGhBaseline,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain } from './panels.js';
