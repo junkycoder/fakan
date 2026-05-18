@@ -97,12 +97,13 @@ export function setupKeyboard(_unused, vp) {
     return topLevels.find((n) => state.topQuadrant.get(n.path) === q);
   };
 
-  // pro běžný uzel: šipka → action podle kvadrantu (parent leží vždy směrem k rootu)
+  // ← = parent, → = child napříč všemi kvadranty (URL hierarchie).
+  // ↑↓ doplňují tree-nav podle kvadrantu (vizuální orientace v mindmapě).
   const QUAD_ACTIONS = {
-    south: { up: 'parent', down: 'child', left: 'prevSibling', right: 'nextSibling' },
-    north: { down: 'parent', up: 'child', left: 'prevSibling', right: 'nextSibling' },
+    south: { left: 'parent', right: 'child', up: 'parent', down: 'child' },
+    north: { left: 'parent', right: 'child', down: 'parent', up: 'child' },
     east:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
-    west:  { right: 'parent', left: 'child', up: 'prevSibling', down: 'nextSibling' },
+    west:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
   };
 
   window.addEventListener('keydown', (e) => {
@@ -156,6 +157,31 @@ export function setupKeyboard(_unused, vp) {
       const dir = dirMap[e.key];
       const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
       if (!current) return;
+      // Na recenter rootu: ← opustí recenter (přejde na rodiče v originálním stromu),
+      // → vstoupí na prvního potomka. Drží URL hierarchii konzistentní s ostatními uzly.
+      if (current.type === 'root' && state.currentRootPath && (dir === 'left' || dir === 'right')) {
+        if (dir === 'left') {
+          const parts = state.currentRootPath.split('/');
+          const parentPath = parts.slice(0, -1).join('/');
+          recenter(parentPath);
+          const newNode = state.byPath.get(parentPath);
+          if (newNode) {
+            focusNode(newNode);
+            vp.ensureVisible(newNode);
+            if (state.followerPanel) openAsFollower(newNode);
+          }
+          return;
+        }
+        // dir === 'right' → první potomek (uvnitř recenter subtree)
+        const kids = state.childrenByPath.get(state.currentRootPath) || [];
+        const next = kids[0];
+        if (next) {
+          focusNode(next);
+          vp.ensureVisible(next);
+          if (state.followerPanel) openAsFollower(next);
+        }
+        return;
+      }
       let next = null;
       if (current.type === 'root') {
         next = goToQuadrant(rootQuadrantArrow[dir]);
