@@ -11,7 +11,6 @@ import {
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadDefaultSource,
 } from './sources.js';
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
-import { openLink } from './links.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -41,12 +40,6 @@ export async function boot() {
     const node = state.byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
-    // externí odkaz (.url soubor) — otevři target, nesahej do panelů
-    if (node.kind === 'link') {
-      if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
-      openLink(node);
-      return;
-    }
     // adresář (i root) = recenter, ne otevírání okna se stromem
     if (node.type === 'dir' || node.type === 'root') {
       if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
@@ -102,9 +95,6 @@ function initFromUrl() {
 
   const node = findNodeByPath(state.originalTree, path);
   if (!node) return;
-
-  // link uzel (.url) — externí odkaz nepatří do URL state, ignoruj
-  if (node.kind === 'link') return;
 
   // 2) dir-only stav (URL končí slashem nebo node je dir)
   if (isDir || node.type === 'dir' || node.type === 'root') {

@@ -6,7 +6,6 @@ import {
   openMain, openMainOnly, openAsFollower,
   closePanel, toggleMax, bringToFront, setActive, getAllPanels,
 } from './panels.js';
-import { openLink } from './links.js';
 
 function findNeighbor(current, direction, nodes) {
   const cx = current.col + current.name.length / 2;
@@ -217,8 +216,6 @@ export function setupKeyboard(_unused, vp) {
       const node = state.byPath.get(state.focusedPath);
       if (!node) return;
       e.preventDefault();
-      // externí odkaz (.url) — otevři target
-      if (node.kind === 'link') { openLink(node); return; }
       // adresář (i root) = recenter
       if (node.type === 'dir' || node.type === 'root') {
         recenter(node.path || '');
@@ -238,8 +235,6 @@ export function setupKeyboard(_unused, vp) {
       const node = state.byPath.get(state.focusedPath);
       if (node) {
         e.preventDefault();
-        // externí odkaz (.url) — otevři target
-        if (node.kind === 'link') { openLink(node); return; }
         // adresář (i root) = recenter
         if (node.type === 'dir' || node.type === 'root') {
           recenter(node.path || '');

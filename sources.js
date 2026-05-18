@@ -10,11 +10,9 @@ import {
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
   applyTreeOps,
-  gitBlobSha, setGhBaseline, clearGhBaseline,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain } from './panels.js';
-import { parseUrlFile } from './links.js';
 
 // --- FS Access API: walk dropnuté / vybrané složky ---------------------------
 // Funguje v Chromu / Edge / Brave. Safari + Firefox zatím FS Access API nemají.
@@ -138,15 +136,6 @@ function isGitignored(path, isDir, gitignores) {
 async function makeFileNode(handle) {
   const name = handle.name;
   const [stem, ext] = splitExt(name);
-  if (ext === '.url') {
-    let text = '';
-    try { text = await (await handle.getFile()).text(); } catch {}
-    const link = parseUrlFile(name, text);
-    return {
-      name: link.displayName, type: 'file', kind: 'link',
-      filename: name, href: link.href,
-    };
-  }
   const isMd = ext === '.md';
   const isText = isTextFile(name, ext);
   const node = {
@@ -279,22 +268,6 @@ async function loadFromFiles(files) {
     const parent = ensureDir(dirSegs.join('/'));
     if (!parent) continue;
     const [stem, ext] = splitExt(name);
-    if (ext === '.url') {
-      const linkNode = {
-        name, type: 'file', kind: 'link',
-        filename: name, href: '',
-      };
-      parent.children.push(linkNode);
-      filePromises.push(async () => {
-        try {
-          const text = await file.text();
-          const link = parseUrlFile(name, text);
-          linkNode.href = link.href;
-          linkNode.name = link.displayName;
-        } catch (err) { console.warn('upload .url read failed', file.webkitRelativePath, err); }
-      });
-      continue;
-    }
     const isMd = ext === '.md';
     const isText = isTextFile(name, ext);
     const node = {
@@ -641,8 +614,7 @@ async function loadFromGithub(spec, onStatus) {
 
   note('načítám strom…');
   const data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
-  const treeTruncated = !!data.truncated;
-  if (treeTruncated) console.warn('GitHub tree truncated — některé soubory chybí');
+  if (data.truncated) console.warn('GitHub tree truncated — některé soubory chybí');
 
   const depthOf = (p) => p === '' ? 0 : p.split('/').length;
   const MAX_DEPTH = 4;
@@ -675,8 +647,6 @@ async function loadFromGithub(spec, onStatus) {
   const isPathHidden = (p) => p.split('/').some((s) => isHidden(s, patterns));
 
   const entries = (data.tree || []).slice().sort((a, b) => a.path.localeCompare(b.path));
-  const baselineSha = new Map();
-  const baselinePaths = new Set();
   const filePromises = [];
   for (const e of entries) {
     if (!e.path) continue;
@@ -686,31 +656,12 @@ async function loadFromGithub(spec, onStatus) {
     if (e.type === 'tree') {
       ensureDir(e.path);
     } else if (e.type === 'blob') {
-      if (e.sha) baselineSha.set(e.path, e.sha);
-      baselinePaths.add(e.path);
       const parts = e.path.split('/');
       const name = parts[parts.length - 1];
       const parentPath = parts.slice(0, -1).join('/');
       const parent = ensureDir(parentPath);
       if (!parent) continue;
       const [stem, ext] = splitExt(name);
-      if (ext === '.url') {
-        const linkNode = {
-          name, type: 'file', kind: 'link',
-          filename: name, href: '',
-        };
-        parent.children.push(linkNode);
-        const blobPath = e.path;
-        filePromises.push(async () => {
-          try {
-            const text = await ghFetchText(spec, blobPath);
-            const link = parseUrlFile(name, text);
-            linkNode.href = link.href;
-            linkNode.name = link.displayName;
-          } catch (err) { console.warn('gh .url fetch failed', blobPath, err); }
-        });
-        continue;
-      }
       const isMd = ext === '.md';
       const isText = isTextFile(name, ext);
       const node = {
@@ -755,14 +706,6 @@ async function loadFromGithub(spec, onStatus) {
 
   note(`stahuji obsah (${filePromises.length})…`);
   await pLimitAll(filePromises, 8);
-
-  setGhBaseline({
-    key: `${spec.owner}/${spec.repo}@${spec.branch}`,
-    sha: baselineSha,
-    paths: baselinePaths,
-    truncated: treeTruncated,
-  });
-
   return root;
 }
 
@@ -2011,13 +1954,25 @@ export function renderSourceMenu() {
 export function mountBadge() {
   const wrap = document.getElementById('badge');
   if (!wrap) return;
-  wrap.innerHTML = '';
+  wrap.innerHTML = `
+    <div class="badge__meta-row">
+      <a class="badge__meta" href="#" data-badge-tip>přispět</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
+      <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
+      <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">kontakt</a>
+    </div>
+  `;
   wrap.removeAttribute('hidden');
+  wrap.querySelector('[data-badge-tip]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showTipDialog();
+  });
 }
 
 // --- Tip dialog (QR Platba) -------------------------------------------------
 
-export function showTipDialog() {
+function showTipDialog() {
   // zavři případnou existující instanci
   document.querySelector('[data-tip-dialog]')?.remove();
 
