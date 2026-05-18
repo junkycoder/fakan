@@ -1,7 +1,7 @@
 // Boot orchestrace — DOMContentLoaded sekvence.
 
 import { state } from './state.js';
-import { setupViewport, focusNode, recenter, restoreRecenterHistory } from './mindmap.js';
+import { setupViewport, focusNode, recenter, restoreRecenterHistory, revealMore } from './mindmap.js';
 import {
   renderNav, openMain, openMainOnly, openAsFollower, closePanel,
 } from './panels.js';
@@ -37,10 +37,11 @@ export async function boot() {
     // hit button nesmí zůstat aktivní v DOM, jinak by Space na nej spustil click znova
     el.blur();
     const path = el.dataset.path;
-    // 'more' uzel = recenter do parent složky (vidí všechny děti); single i dbl klik stejně
+    // 'more' uzel = odhal další várku in-place (žádný recenter); single i dbl klik stejně
     if (el.dataset.type === 'more') {
+      if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
       const target = el.dataset.targetPath || '';
-      recenter(target === '/' ? '' : target);
+      revealMore(target === '/' ? '' : target);
       return;
     }
     const node = state.byPath.get(path === '/' ? '' : path);

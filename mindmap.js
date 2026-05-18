@@ -94,7 +94,9 @@ function maybeTruncate(children, parentPath) {
   if (children.some((c) => c.type === 'more')) return children;
   const dirs = children.filter((c) => c.type === 'dir');
   const files = children.filter((c) => c.type === 'file');
-  const budget = Math.max(1, TRUNCATE_KEEP - dirs.length);
+  const baseBudget = Math.max(1, TRUNCATE_KEEP - dirs.length);
+  const extra = state.expandedMore.get(parentPath || '') || 0;
+  const budget = baseBudget + extra;
   if (files.length <= budget) return children;
   const keep = files.slice(-budget);
   const hidden = files.length - keep.length;
@@ -103,6 +105,16 @@ function maybeTruncate(children, parentPath) {
     type: 'more',
     targetPath: parentPath || '',
   }];
+}
+
+// Klik na „+ N dalších" — odhalí další várku in-place místo recenteru.
+// Vrací true, pokud došlo k odhalení (alespoň jeden uzel nově viditelný).
+export function revealMore(targetPath) {
+  const key = targetPath || '';
+  const cur = state.expandedMore.get(key) || 0;
+  state.expandedMore.set(key, cur + TRUNCATE_KEEP);
+  rebuildMindmap(state.focusedPath);
+  return true;
 }
 
 // --- layout: down-body (standardní `tree`) -----------------------------------
@@ -174,17 +186,12 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
         // truncate child.children jednou — propaguje se jak do branchify (split),
         // tak do lineárního walku níž; zabrání dvojím „more" uzlům na obou polovinách.
         const kids = maybeTruncate(child.children, path);
-        // 2. úroveň — rozkošatění top-level uzlů s ≥6 dětmi do W+S+E sub-stran.
-        // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
-        // Práh 6 (ne 3) — menší uzly zůstanou lineární, aby sub-strany sourozenců
-        // uvnitř stejného kvadrantu na sebe nenarážely.
-        if (branchify && depth === 0 && child.type === 'dir' && kids.length >= 6) {
-          const sub = layoutSubBranches(kids === child.children ? child : { ...child, children: kids }, path);
-      if (child.children && child.children.length) {
         // 2. úroveň — rozkošatění top-level uzlů s dost dětmi do W+S+E sub-stran.
         // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
-        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= BRANCH_THRESHOLD) {
-          const sub = layoutSubBranches(child, path);
+        // BRANCH_THRESHOLD — menší uzly zůstanou lineární, aby sub-strany sourozenců
+        // uvnitř stejného kvadrantu na sebe nenarážely.
+        if (branchify && depth === 0 && child.type === 'dir' && kids.length >= BRANCH_THRESHOLD) {
+          const sub = layoutSubBranches(kids === child.children ? child : { ...child, children: kids }, path);
 
           composeBody(g, sub, row, cc + 4);
           const sb = bbox(sub);

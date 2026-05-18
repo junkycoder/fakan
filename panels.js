@@ -12,7 +12,7 @@ import {
 import {
   recenter, removeFromHistory,
   refreshOpenLabels, renderDirTree,
-  addTreeNode, removeTreeNode, rebuildMindmap,
+  addTreeNode, removeTreeNode, rebuildMindmap, revealMore,
 } from './mindmap.js';
 import { syncFromState, findNodeByPath } from './url.js';
 
@@ -690,7 +690,9 @@ function setupPanelInteractions(panel) {
       const target = span.dataset.targetPath || '';
       e.preventDefault();
       e.stopPropagation();
-      recenter(target === '/' ? '' : target);
+      if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
+      revealMore(target === '/' ? '' : target);
+      rerenderPanelBody(panel);
       return;
     }
     const node = state.byPath.get(path);

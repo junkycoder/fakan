@@ -113,6 +113,11 @@ export const state = {
   // klávesnice
   focusedPath: '',
 
+  // „+ N dalších" reveal — per parent dir path, kolik souborů přibylo nad TRUNCATE_KEEP.
+  // Klik na more node bump-ne hodnotu o batch a rebuilduje mindmapu in-place
+  // (žádný recenter, žádná změna URL).
+  expandedMore: new Map(),
+
   // zdroje
   rootHandle: null,
   githubSpec: null,
