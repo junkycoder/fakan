@@ -514,6 +514,10 @@ function createPanel(node, variant) {
       ${webRef}
       <div class="panel__actions">
         ${buildable ? `<button class="panel__btn panel__btn--play${initialMode === 'rendered' ? ' is-active' : ''}" type="button" data-panel-play title="${playTitle}" aria-label="Sestavit">${playLabel}</button>` : ''}
+        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="left" title="Vlevo" aria-label="Vlevo">◧</button>
+        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="right" title="Vpravo" aria-label="Vpravo">◨</button>
+        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="top" title="Nahoře" aria-label="Nahoře">▔</button>
+        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="bottom" title="Dole" aria-label="Dole">▁</button>
         <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
         <button class="panel__btn panel__btn--close" type="button" data-panel-close title="Zavřít" aria-label="Zavřít">×</button>
       </div>
@@ -528,10 +532,72 @@ function createPanel(node, variant) {
     variant,
     mode: initialMode,
     isMax: false,
+    dock: null,       // null | 'left' | 'right' | 'top' | 'bottom' | 'full'
     savedStyles: null,
     objectUrls: [],   // blob: URL pro media/download — revokuj v closePanel
   };
   return panel;
+}
+
+// Snap zones — bottom prostor 64px nechává místo na nav.
+const DOCK_STYLES = {
+  full:   { left: '8px',  top: 'calc(8px + var(--safe-t))',  right: '8px',  bottom: 'calc(64px + var(--safe-b))', width: 'auto',                                         height: 'auto' },
+  left:   { left: '8px',  top: 'calc(8px + var(--safe-t))',  right: 'auto', bottom: 'calc(64px + var(--safe-b))', width: 'calc(50vw - 12px)',                            height: 'auto' },
+  right:  { left: 'auto', top: 'calc(8px + var(--safe-t))',  right: '8px',  bottom: 'calc(64px + var(--safe-b))', width: 'calc(50vw - 12px)',                            height: 'auto' },
+  top:    { left: '8px',  top: 'calc(8px + var(--safe-t))',  right: '8px',  bottom: 'auto',                       width: 'auto',                                         height: 'calc(50dvh - 40px - var(--safe-t))' },
+  bottom: { left: '8px',  top: 'auto',                       right: '8px',  bottom: 'calc(64px + var(--safe-b))', width: 'auto',                                         height: 'calc(50dvh - 40px - var(--safe-b))' },
+};
+
+function updateDockButtons(panel) {
+  const dock = panel.dock;
+  for (const btn of panel.element.querySelectorAll('[data-panel-dock]')) {
+    btn.classList.toggle('is-active', btn.dataset.panelDock === dock);
+  }
+  const maxBtn = panel.element.querySelector('[data-panel-max]');
+  if (maxBtn) {
+    const isFull = dock === 'full';
+    maxBtn.classList.toggle('is-active', isFull);
+    maxBtn.textContent = isFull ? '▭' : '▢';
+    maxBtn.title = isFull ? 'Obnovit' : 'Maximalizovat';
+  }
+}
+
+export function dockPanel(panel, zone) {
+  const el = panel.element;
+  // toggle: kliknutí na aktivní zónu = restore
+  if (panel.dock === zone) { restorePanel(panel); return; }
+  // první přechod z floating → save pozice pro restore
+  if (!panel.dock) {
+    panel.savedStyles = {
+      left: el.style.left, top: el.style.top,
+      right: el.style.right, bottom: el.style.bottom,
+      width: el.style.width, height: el.style.height,
+    };
+  }
+  const s = DOCK_STYLES[zone];
+  if (!s) return;
+  el.style.left = s.left; el.style.top = s.top;
+  el.style.right = s.right; el.style.bottom = s.bottom;
+  el.style.width = s.width; el.style.height = s.height;
+  el.classList.add('panel--max');
+  el.classList.remove('panel--dock-left', 'panel--dock-right', 'panel--dock-top', 'panel--dock-bottom', 'panel--dock-full');
+  el.classList.add(`panel--dock-${zone}`);
+  panel.dock = zone;
+  panel.isMax = (zone === 'full');
+  updateDockButtons(panel);
+}
+
+function restorePanel(panel) {
+  const el = panel.element;
+  const s = panel.savedStyles || {};
+  el.style.left = s.left || ''; el.style.top = s.top || '';
+  el.style.right = s.right || ''; el.style.bottom = s.bottom || '';
+  el.style.width = s.width || ''; el.style.height = s.height || '';
+  el.classList.remove('panel--max', 'panel--dock-left', 'panel--dock-right', 'panel--dock-top', 'panel--dock-bottom', 'panel--dock-full');
+  panel.savedStyles = null;
+  panel.dock = null;
+  panel.isMax = false;
+  updateDockButtons(panel);
 }
 
 function positionPanel(panel) {
@@ -740,6 +806,12 @@ function setupPanelInteractions(panel) {
   }
 
   maxBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMax(panel); });
+  for (const btn of el.querySelectorAll('[data-panel-dock]')) {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      dockPanel(panel, btn.dataset.panelDock);
+    });
+  }
   head.addEventListener('dblclick', (e) => {
     if (e.target.closest('.panel__btn')) return;
     toggleMax(panel);
@@ -750,7 +822,7 @@ function setupPanelInteractions(panel) {
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
   head.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.panel__btn')) return;
-    if (panel.isMax) return;
+    if (panel.dock) return;
     bringToFront(el);
     dragging = true;
     head.classList.add('is-dragging');
@@ -786,32 +858,7 @@ function setupPanelInteractions(panel) {
 }
 
 export function toggleMax(panel) {
-  const el = panel.element;
-  const maxBtn = el.querySelector('[data-panel-max]');
-  if (panel.isMax) {
-    const s = panel.savedStyles || {};
-    el.style.left = s.left || ''; el.style.top = s.top || '';
-    el.style.right = s.right || ''; el.style.bottom = s.bottom || '';
-    el.style.width = s.width || ''; el.style.height = s.height || '';
-    el.classList.remove('panel--max');
-    panel.isMax = false;
-    if (maxBtn) { maxBtn.textContent = '▢'; maxBtn.title = 'Maximalizovat'; }
-  } else {
-    panel.savedStyles = {
-      left: el.style.left, top: el.style.top,
-      right: el.style.right, bottom: el.style.bottom,
-      width: el.style.width, height: el.style.height,
-    };
-    el.style.left = '8px';
-    el.style.top = 'calc(8px + var(--safe-t))';
-    el.style.right = '8px';
-    el.style.bottom = 'calc(64px + var(--safe-b))'; // místo na nav
-    el.style.width = 'auto';
-    el.style.height = 'auto';
-    el.classList.add('panel--max');
-    panel.isMax = true;
-    if (maxBtn) { maxBtn.textContent = '▭'; maxBtn.title = 'Obnovit'; }
-  }
+  dockPanel(panel, 'full');
 }
 
 export function closeAllPreviews() {
