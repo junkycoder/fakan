@@ -207,7 +207,7 @@ button {
   bottom: calc(12px + var(--safe-b));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 5;
+  z-index: 20;
   display: flex;
   align-items: center;
   gap: 4px;
