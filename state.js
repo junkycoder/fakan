@@ -82,18 +82,6 @@ export const RECENT_CAP = 8;
 export const TIP_ACCOUNT = '1060795014';
 export const TIP_BANK = '3030';
 export const TIP_IBAN = 'CZ1530300000001060795014';
-export const WAITLIST_ENDPOINT = '/waitlist';
-export const HOSTED_PRICE_CZK = 99;
-
-export const RESERVED_SUBDOMAINS = new Set([
-  'www', 'api', 'app', 'auth', 'admin', 'status', 'docs', 'mail',
-  'fakan', 'help', 'support', 'blog', 'dev', 'staging', 'test',
-  'mx', 'ns', 'ns1', 'ns2', 'smtp', 'pop', 'imap', 'ftp',
-  'root', 'webmaster', 'postmaster',
-]);
-
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-export const SUBDOMAIN_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 // --- mutable shared state ---------------------------------------------------
 

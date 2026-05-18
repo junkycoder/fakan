@@ -151,8 +151,7 @@ fakan/
 ├── CLAUDE.md              tenhle soubor
 ├── FOK.md                 logovník mezi sessionemi
 ├── functions/             Cloudflare Pages Functions
-│   ├── _middleware.js     SPA fallback
-│   └── waitlist.js        landing/waitlist endpoint
+│   └── _middleware.js     SPA fallback
 ├── bin/
 │   └── serve.py           lokální dev server (SPA fallback)
 ├── tests/                 Playwright e2e

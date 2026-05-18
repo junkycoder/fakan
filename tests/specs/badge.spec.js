@@ -1,4 +1,4 @@
-// Badge meta — github + mail linky.
+// Badge meta — řádek odkazů v rohu (přispět · odebírat · github · email · podmínky · licence).
 import { test, expect } from '@playwright/test';
 import { bootApp } from '../utils/boot.js';
 import { SEL } from '../utils/selectors.js';
@@ -6,6 +6,11 @@ import { SEL } from '../utils/selectors.js';
 test.describe('Badge meta', () => {
   test.beforeEach(async ({ page }) => {
     await bootApp(page);
+  });
+
+  test('obsahuje všechny meta odkazy ve správném pořadí', async ({ page }) => {
+    const labels = await page.locator(`${SEL.badge} a`).allTextContents();
+    expect(labels).toEqual(['přispět', 'odebírat', 'github', 'email', 'podmínky', 'licence']);
   });
 
   test('github link vede na junkycoder/fakan a otevírá se v novém tabu', async ({ page }) => {
@@ -16,14 +21,20 @@ test.describe('Badge meta', () => {
     await expect(gh).toHaveAttribute('rel', /noopener/);
   });
 
-  test('mail link je mailto: na hromada.dan@gmail.com', async ({ page }) => {
-    const mail = page.locator(`${SEL.badge} a`, { hasText: 'mail' });
+  test('email link je mailto: na hromada.dan@gmail.com', async ({ page }) => {
+    const mail = page.locator(`${SEL.badge} a`, { hasText: 'email' });
     await expect(mail).toBeVisible();
     await expect(mail).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com/);
   });
 
-  test('badge obsahuje obě CTA: "Já to chci taky" a "Přispět"', async ({ page }) => {
-    await expect(page.locator('[data-badge-want]')).toBeVisible();
-    await expect(page.locator('[data-badge-tip]')).toBeVisible();
+  test('odebírat je mailto: s předmětem Odebírat', async ({ page }) => {
+    const sub = page.locator(`${SEL.badge} a`, { hasText: 'odebírat' });
+    await expect(sub).toBeVisible();
+    await expect(sub).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com.*Odeb/i);
+  });
+
+  test('licence vede na AGPL-3.0', async ({ page }) => {
+    const lic = page.locator(`${SEL.badge} a`, { hasText: 'licence' });
+    await expect(lic).toHaveAttribute('href', /gnu\.org\/licenses\/agpl-3\.0/);
   });
 });

@@ -1,14 +1,13 @@
 // Zdroje dat: FS Access API, upload fallback, GitHub, IndexedDB persist,
 // gitignore parser, source menu, GitHub dialog, branch picker,
-// empty state + drop zone + badge + waitlist wizard.
+// empty state + drop zone + badge.
 
 import {
   state,
   FALLBACK_PATTERNS, IDB_NAME, IDB_STORE, IDB_KEY,
   IDB_KEY_SNAPSHOT, IDB_KEY_GH, IDB_KEY_RECENT, RECENT_CAP,
   LS_EDIT_PREFIX,
-  TIP_ACCOUNT, TIP_BANK, TIP_IBAN, WAITLIST_ENDPOINT, HOSTED_PRICE_CZK,
-  RESERVED_SUBDOMAINS, EMAIL_RE, SUBDOMAIN_RE,
+  TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
@@ -1828,29 +1827,31 @@ export function renderSourceMenu() {
   }).catch(() => {});
 }
 
-// --- floating badge + wizard -----------------------------------------------
+// --- floating badge --------------------------------------------------------
 
 export function mountBadge() {
   const wrap = document.getElementById('badge');
   if (!wrap) return;
   wrap.innerHTML = `
-    <div class="badge__row">
-      <button type="button" class="badge__cta badge__cta--want" data-badge-want>Já to chci taky</button>
-      <button type="button" class="badge__cta badge__cta--tip" data-badge-tip>Přispět</button>
-    </div>
     <div class="badge__meta-row">
-      <a class="badge__meta" href="pravidla.html" data-badge-rules>užití</a>
+      <a class="badge__meta" href="#" data-badge-tip>přispět</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
+      <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Odeb%C3%ADrat%20fakan.cz">odebírat</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
       <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">mail</a>
+      <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">email</a>
       <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">AGPL-3.0</a>
+      <a class="badge__meta" href="pravidla.html" data-badge-rules>podmínky</a>
+      <span class="badge__meta-sep" aria-hidden="true">·</span>
+      <a class="badge__meta" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">licence</a>
     </div>
   `;
   wrap.removeAttribute('hidden');
-  wrap.querySelector('[data-badge-want]').addEventListener('click', () => showWizard());
-  wrap.querySelector('[data-badge-tip]').addEventListener('click', () => showTipDialog());
+  wrap.querySelector('[data-badge-tip]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showTipDialog();
+  });
   wrap.querySelector('[data-badge-rules]').addEventListener('click', (e) => {
     e.preventDefault();
     showRulesDialog();
@@ -1967,293 +1968,4 @@ function showTipDialog() {
       copyBtn.disabled = false;
     }, 1800);
   });
-}
-
-function showWizard() {
-  document.querySelector('[data-wizard]')?.remove();
-
-  const wizardState = {
-    step: 1,
-    email: '',
-    consent: false,
-    subdomain: '',
-    wantsCustomDomain: false,
-    sourceType: '',
-  };
-
-  const wrap = document.createElement('div');
-  wrap.className = 'wizard';
-  wrap.setAttribute('data-wizard', '');
-  wrap.innerHTML = `
-    <div class="wizard__panel" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-      <header class="wizard__head">
-        <h2 class="wizard__title" id="wizard-title">Vlastní fakan space</h2>
-        <span class="wizard__progress" data-wizard-progress>1 / 5</span>
-      </header>
-
-      <section class="wizard__step wizard__step--active" data-step="1">
-        <p class="wizard__intro">fakan je „přehrávač kazet". Vy nám dáte složku nebo git repo s vašimi <code>.md</code> soubory, my je servírujeme na <code>vy.fakan.cz</code> jako mindmapu.</p>
-        <p class="wizard__intro wizard__intro--muted">Hosted plán bude od ${HOSTED_PRICE_CZK} Kč&nbsp;/&nbsp;měsíc. Backend ještě stavíme — teď sbíráme zájem, dáme vědět, jakmile půjde to nasadit.</p>
-      </section>
-
-      <section class="wizard__step" data-step="2">
-        <p class="wizard__intro">Kam vám napsat, až to půjde spustit?</p>
-        <label class="wizard__field">
-          <span>E-mail</span>
-          <input type="email" data-wizard-email placeholder="vy@example.com" autocomplete="email" required>
-        </label>
-        <label class="wizard__check">
-          <input type="checkbox" data-wizard-consent>
-          <span>Posílejte mi i drobné aktualizace o vývoji. Žádný spam, kdykoli odhlásit.</span>
-        </label>
-      </section>
-
-      <section class="wizard__step" data-step="3">
-        <p class="wizard__intro">Jaká subdoména pod <code>fakan.cz</code>?</p>
-        <label class="wizard__field">
-          <span>Subdoména</span>
-          <span class="wizard__subdomain">
-            <input type="text" data-wizard-subdomain placeholder="vase-jmeno" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
-            <span class="wizard__subdomain-suffix">.fakan.cz</span>
-          </span>
-        </label>
-        <p class="wizard__hint">Malá písmena, číslice a pomlčky. 2 až 31 znaků. Dostupnost ověříme při spuštění.</p>
-        <label class="wizard__check">
-          <input type="checkbox" data-wizard-custom>
-          <span>Chci místo toho vlastní doménu (nakoupíme&nbsp;přes&nbsp;nás, DNS i TLS řešíme my).</span>
-        </label>
-      </section>
-
-      <section class="wizard__step" data-step="4">
-        <p class="wizard__intro">Odkud bereme obsah?</p>
-        <div class="wizard__radios" data-wizard-radios>
-          <label class="wizard__radio">
-            <input type="radio" name="source" value="github">
-            <span>
-              <strong>GitHub repo</strong>
-              <small>Nejlepší volba. Commit = deploy. Zálohy jednou denně do našeho úložiště.</small>
-            </span>
-          </label>
-          <label class="wizard__radio">
-            <input type="radio" name="source" value="folder">
-            <span>
-              <strong>Lokální složka</strong>
-              <small>Z prohlížeče (Chrome/Edge). Synchronizace ručně, bez gitu.</small>
-            </span>
-          </label>
-          <label class="wizard__radio">
-            <input type="radio" name="source" value="upload">
-            <span>
-              <strong>Upload archivu</strong>
-              <small>Pošlete zip / složku jednorázově. Edity přes naše UI, pravidelné backupy.</small>
-            </span>
-          </label>
-        </div>
-      </section>
-
-      <section class="wizard__step" data-step="5">
-        <p class="wizard__intro">Tady je co máme:</p>
-        <div class="wizard__summary">
-          <dl>
-            <div><dt>E-mail</dt><dd data-summary-email></dd></div>
-            <div><dt>Adresa</dt><dd data-summary-addr></dd></div>
-            <div><dt>Zdroj</dt><dd data-summary-source></dd></div>
-          </dl>
-        </div>
-        <p class="wizard__hint">Po odeslání se vám ozveme e-mailem, jakmile Hosted otevřeme.<br>Mezitím můžete podpořit vývoj přes <strong>Přispět</strong>.</p>
-      </section>
-
-      <div class="wizard__error" data-wizard-error></div>
-
-      <div class="wizard__buttons">
-        <button type="button" class="wizard__btn" data-wizard-cancel>Zavřít</button>
-        <div class="wizard__buttons-right">
-          <button type="button" class="wizard__btn" data-wizard-prev hidden>Zpět</button>
-          <button type="button" class="wizard__btn wizard__btn--primary" data-wizard-next>Pokračovat</button>
-        </div>
-      </div>
-
-      <div class="wizard__foot">
-        Vaše data zůstávají ve vašem repu nebo složce. Když fakan zanikne, doména i obsah jsou vaše. <a href="#" data-wizard-zaruka>Záruka</a>.
-      </div>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-
-  const panel = wrap.querySelector('.wizard__panel');
-  const progress = wrap.querySelector('[data-wizard-progress]');
-  const steps = Array.from(wrap.querySelectorAll('.wizard__step'));
-  const errorEl = wrap.querySelector('[data-wizard-error]');
-  const cancelBtn = wrap.querySelector('[data-wizard-cancel]');
-  const prevBtn = wrap.querySelector('[data-wizard-prev]');
-  const nextBtn = wrap.querySelector('[data-wizard-next]');
-  const emailIn = wrap.querySelector('[data-wizard-email]');
-  const consentIn = wrap.querySelector('[data-wizard-consent]');
-  const subIn = wrap.querySelector('[data-wizard-subdomain]');
-  const customIn = wrap.querySelector('[data-wizard-custom]');
-  const radios = wrap.querySelector('[data-wizard-radios]');
-  const TOTAL_STEPS = steps.length;
-
-  const close = () => {
-    wrap.remove();
-    document.removeEventListener('keydown', onKey);
-  };
-  const onKey = (e) => {
-    if (e.key === 'Escape') { e.preventDefault(); close(); }
-  };
-  document.addEventListener('keydown', onKey);
-  cancelBtn.addEventListener('click', close);
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-
-  const setError = (msg) => { errorEl.textContent = msg || ''; };
-
-  const render = () => {
-    steps.forEach((s) => s.classList.toggle('wizard__step--active', Number(s.dataset.step) === wizardState.step));
-    progress.textContent = `${wizardState.step} / ${TOTAL_STEPS}`;
-    prevBtn.hidden = wizardState.step === 1;
-    nextBtn.textContent = wizardState.step === TOTAL_STEPS ? 'Zařadit na waitlist' : 'Pokračovat';
-    setError('');
-    panel.scrollTop = 0;
-    // focus pro krok
-    setTimeout(() => {
-      if (wizardState.step === 2) emailIn.focus();
-      else if (wizardState.step === 3) subIn.focus();
-      else if (wizardState.step === 5) renderSummary();
-    }, 0);
-  };
-
-  const renderSummary = () => {
-    wrap.querySelector('[data-summary-email]').textContent = wizardState.email || '—';
-    const addr = wizardState.wantsCustomDomain ? 'vlastní doména (vybereme společně)' : (wizardState.subdomain ? `${wizardState.subdomain}.fakan.cz` : '—');
-    wrap.querySelector('[data-summary-addr]').textContent = addr;
-    const sourceLabel = {
-      github: 'GitHub repo',
-      folder: 'lokální složka',
-      upload: 'upload archivu',
-    }[wizardState.sourceType] || '—';
-    wrap.querySelector('[data-summary-source]').textContent = sourceLabel;
-  };
-
-  const validateStep = () => {
-    if (wizardState.step === 2) {
-      const v = emailIn.value.trim();
-      if (!EMAIL_RE.test(v)) { setError('Zkontrolujte, prosím, e-mail.'); emailIn.focus(); return false; }
-      wizardState.email = v;
-      wizardState.consent = !!consentIn.checked;
-      return true;
-    }
-    if (wizardState.step === 3) {
-      wizardState.wantsCustomDomain = !!customIn.checked;
-      if (wizardState.wantsCustomDomain) {
-        wizardState.subdomain = '';
-        return true;
-      }
-      const v = subIn.value.trim().toLowerCase();
-      if (!SUBDOMAIN_RE.test(v)) { setError('Subdoména: 2 až 31 znaků, malá písmena, číslice, pomlčky. Nesmí začínat pomlčkou.'); subIn.focus(); return false; }
-      if (RESERVED_SUBDOMAINS.has(v)) { setError('Tahle subdoména je rezervovaná. Zkuste jinou.'); subIn.focus(); return false; }
-      wizardState.subdomain = v;
-      return true;
-    }
-    if (wizardState.step === 4) {
-      const checked = radios.querySelector('input[name="source"]:checked');
-      if (!checked) { setError('Vyberte, odkud bereme obsah.'); return false; }
-      wizardState.sourceType = checked.value;
-      return true;
-    }
-    return true;
-  };
-
-  const submit = async () => {
-    nextBtn.disabled = true;
-    prevBtn.disabled = true;
-    cancelBtn.disabled = true;
-    setError('');
-    const payload = {
-      email: wizardState.email,
-      consent: wizardState.consent,
-      subdomain: wizardState.subdomain || null,
-      wantsCustomDomain: wizardState.wantsCustomDomain,
-      sourceType: wizardState.sourceType,
-      ua: navigator.userAgent,
-      ref: document.referrer || null,
-      at: new Date().toISOString(),
-    };
-    try {
-      const isDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-      if (isDev) {
-        console.info('[wizard] dev — payload:', payload);
-        await new Promise((r) => setTimeout(r, 400));
-      } else {
-        const res = await fetch(WAITLIST_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      }
-      renderSuccess();
-    } catch (err) {
-      console.error('waitlist submit failed', err);
-      setError('Něco se pokazilo. Napište prosím na hromadadan@gmail.com — zařadíme ručně.');
-      nextBtn.disabled = false;
-      prevBtn.disabled = false;
-      cancelBtn.disabled = false;
-    }
-  };
-
-  const renderSuccess = () => {
-    panel.innerHTML = `
-      <div class="wizard__success">
-        <h3>Jste na seznamu.</h3>
-        <p>Ozveme se vám na <strong>${escapeHtml(wizardState.email)}</strong>, jakmile Hosted otevřeme. Žádný spam mezitím.</p>
-        <p>Pokud chcete vývoj postrčit dopředu, klikněte na <strong>Přispět</strong> v rohu — díky.</p>
-        <div class="wizard__buttons">
-          <span></span>
-          <button type="button" class="wizard__btn wizard__btn--primary" data-wizard-close>Zavřít</button>
-        </div>
-      </div>
-    `;
-    panel.querySelector('[data-wizard-close]').addEventListener('click', close);
-  };
-
-  prevBtn.addEventListener('click', () => {
-    if (wizardState.step > 1) { wizardState.step -= 1; render(); }
-  });
-  nextBtn.addEventListener('click', () => {
-    if (!validateStep()) return;
-    if (wizardState.step === TOTAL_STEPS) { submit(); return; }
-    wizardState.step += 1;
-    render();
-  });
-
-  // Enter v inputu = pokračovat
-  panel.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && e.target.matches('input[type="email"], input[type="text"]')) {
-      e.preventDefault();
-      nextBtn.click();
-    }
-  });
-
-  // klik na radio-row aktivuje radio + označení rodiče
-  radios.addEventListener('change', () => {
-    radios.querySelectorAll('.wizard__radio').forEach((r) => {
-      r.classList.toggle('wizard__radio--active', r.querySelector('input').checked);
-    });
-  });
-
-  // přepínání „vlastní doména" disable / enable subdomain inputu
-  customIn.addEventListener('change', () => {
-    subIn.disabled = customIn.checked;
-    if (customIn.checked) subIn.value = '';
-  });
-
-  // odkaz na záruku
-  wrap.querySelector('[data-wizard-zaruka]').addEventListener('click', (e) => {
-    e.preventDefault();
-    close();
-    const node = state.byPath?.get('about/zaruka.md');
-    if (node) openMain(node);
-  });
-
-  render();
 }
