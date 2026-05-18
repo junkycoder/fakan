@@ -1074,7 +1074,7 @@ function showGithubDialog() {
         <span>Token <em>(volitelně, pro privátní repo)</em></span>
         <input type="password" data-gh-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
       </label>
-      <p class="gh-dialog__hint">Token zůstane jen lokálně v IndexedDB tohohle prohlížeče. S tokenem se v nabídce objeví i vaše repa.</p>
+      <p class="gh-dialog__hint">Token zůstane jen lokálně v IndexedDB tohohle prohlížeče. S tokenem se v nabídce objeví i vaše repa. <a href="https://github.com/settings/tokens/new?description=fakan&amp;scopes=repo" target="_blank" rel="noopener noreferrer">Vygenerovat token</a>.</p>
       <div class="gh-dialog__status" data-gh-status></div>
       <div class="gh-dialog__buttons">
         <button type="button" class="gh-dialog__btn" data-gh-cancel>Zrušit</button>
