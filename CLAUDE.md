@@ -65,6 +65,7 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 
 - `index.html` + ES module JS (`main.js` → `boot.js` + `mindmap.js`, `panels.js`, `keyboard.js`, `sources.js`, `state.js`, `url.js`, `editor.js`) + `styles.css` — bez frameworku
 - Cloudflare Worker `fakan-cz` se Static Assets bindingem (`not_found_handling: "single-page-application"` = SPA fallback) — GitHub repo `junkycoder/fakan`
+- **Dev vs prod SPA fallback se liší!** Worker fallbackuje na 404 z asset map (cokoli, co není v `dist/` → `index.html`). `bin/serve.py` fallbackuje na Accept hlavičce (`text/html` → `index.html`, jinak normal 404). Stejné chování pro user-facing nav, ale lze zde najít drift při testech serving binárek / atypických mime typů
 - Deploy: `bash bin/build.sh && CLOUDFLARE_ACCOUNT_ID=1fb320ef69377e04c649dcc880044f71 wrangler deploy` (build kopíruje produkční soubory do `dist/`)
 - Content fetchnutý za běhu z konfigurovaného GitHub repa (default `junkycoder/fakan.cz`); user může v UI přepnout na vlastní FS handle / GitHub repo / nahraný snapshot — všechny zdroje žijí v IDB
 
