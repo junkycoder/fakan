@@ -721,6 +721,28 @@ export function hideEmptyState() {
   if (overlay) overlay.hidden = true;
 }
 
+function showSourceLoader(label) {
+  const el = document.getElementById('src-loader');
+  if (!el) return;
+  const labelEl = el.querySelector('[data-src-loader-label]');
+  const statusEl = el.querySelector('[data-src-loader-status]');
+  if (labelEl) labelEl.textContent = label || 'Otevírám zdroj…';
+  if (statusEl) statusEl.textContent = '';
+  el.hidden = false;
+}
+
+function setSourceLoaderStatus(msg) {
+  const el = document.getElementById('src-loader');
+  if (!el) return;
+  const statusEl = el.querySelector('[data-src-loader-status]');
+  if (statusEl) statusEl.textContent = msg || '';
+}
+
+function hideSourceLoader() {
+  const el = document.getElementById('src-loader');
+  if (el) el.hidden = true;
+}
+
 export function renderEmptyHint(emptyState) {
   const inner = document.querySelector('[data-empty-hint]');
   if (!inner) return;
@@ -845,6 +867,8 @@ async function withMountLock(label, fn) {
 
 async function loadAndMount(handle, opts = {}) {
   return withMountLock(handle.name || 'složka', async () => {
+  showSourceLoader(`Otevírám ${handle.name || 'složku'}…`);
+  setSourceLoaderStatus('procházím soubory…');
   try {
     const tree = await loadFromHandle(handle);
     state.rootHandle = handle;
@@ -855,6 +879,7 @@ async function loadAndMount(handle, opts = {}) {
     state.currentRootPath = '';
     state.recenterHistory = [];
     hideEmptyState();
+    setSourceLoaderStatus('skládám mindmapu…');
     rebuildMindmap('');
     maybeOpenDefaultIndex();
     renderSourceMenu();
@@ -865,12 +890,16 @@ async function loadAndMount(handle, opts = {}) {
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
+  } finally {
+    hideSourceLoader();
   }
   });
 }
 
 async function loadAndMountSnapshot(files, opts = {}) {
   return withMountLock(opts.tree?.name || 'snapshot', async () => {
+  showSourceLoader(`Otevírám ${opts.tree?.name || 'snapshot'}…`);
+  setSourceLoaderStatus('procházím soubory…');
   try {
     const tree = opts.tree || await loadFromFiles(files);
     state.rootHandle = null;
@@ -881,6 +910,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     state.currentRootPath = '';
     state.recenterHistory = [];
     hideEmptyState();
+    setSourceLoaderStatus('skládám mindmapu…');
     rebuildMindmap('');
     maybeOpenDefaultIndex();
     renderSourceMenu();
@@ -891,27 +921,40 @@ async function loadAndMountSnapshot(files, opts = {}) {
   } catch (err) {
     console.error(err);
     alert(`Nahrání složky selhalo: ${err.message}`);
+  } finally {
+    hideSourceLoader();
   }
   });
 }
 
 async function connectGithub(spec, onStatus) {
   return withMountLock(`${spec.owner}/${spec.repo}`, async () => {
-    const tree = await loadFromGithub(spec, onStatus);
-    state.rootHandle = null;
-    state.githubSpec = spec;
-    state.uploadedSnapshot = null;
-    state.originalTree = applyTreeOps(tree);
-    state.currentRootPath = '';
-    state.recenterHistory = [];
-    hideEmptyState();
-    rebuildMindmap('');
-    maybeOpenDefaultIndex();
-    renderSourceMenu();
-    await idbSetGithubSpec(spec);
-    await idbClearHandle();
-    await idbClearSnapshot();
-    await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+    const label = `Otevírám ${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}…`;
+    showSourceLoader(label);
+    const status = (m) => {
+      setSourceLoaderStatus(m);
+      if (onStatus) onStatus(m);
+    };
+    try {
+      const tree = await loadFromGithub(spec, status);
+      state.rootHandle = null;
+      state.githubSpec = spec;
+      state.uploadedSnapshot = null;
+      state.originalTree = applyTreeOps(tree);
+      state.currentRootPath = '';
+      state.recenterHistory = [];
+      hideEmptyState();
+      setSourceLoaderStatus('skládám mindmapu…');
+      rebuildMindmap('');
+      maybeOpenDefaultIndex();
+      renderSourceMenu();
+      await idbSetGithubSpec(spec);
+      await idbClearHandle();
+      await idbClearSnapshot();
+      await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+    } finally {
+      hideSourceLoader();
+    }
   });
 }
 

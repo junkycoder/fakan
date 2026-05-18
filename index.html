@@ -52,6 +52,14 @@
     <div class="empty-state__inner" data-empty-hint></div>
   </div>
 
+  <div class="src-loader" id="src-loader" data-src-loader hidden aria-live="polite" aria-busy="true">
+    <div class="src-loader__inner">
+      <pre class="src-loader__spinner" data-src-loader-spinner aria-hidden="true">┼</pre>
+      <div class="src-loader__label" data-src-loader-label>Otevírám zdroj…</div>
+      <div class="src-loader__status" data-src-loader-status></div>
+    </div>
+  </div>
+
   <div class="badge" id="badge" data-badge hidden></div>
 
   <script src="vendor/qrcode.min.js"></script>
