@@ -825,7 +825,26 @@ async function openUploadPicker() {
   await loadAndMountSnapshot(files);
 }
 
+// Mount lock — zabraňuje race při paralelním přepínání zdrojů
+// (dvojklik na "Připojit", přepnutí GitHub→složka během fetch atd.).
+// Druhý pokus se odmítne; user dostane info, že už něco běží.
+let _mountInFlight = null;
+
+async function withMountLock(label, fn) {
+  if (_mountInFlight) {
+    alert(`Už připojuji „${_mountInFlight}". Počkejte na dokončení.`);
+    return;
+  }
+  _mountInFlight = label;
+  try {
+    return await fn();
+  } finally {
+    _mountInFlight = null;
+  }
+}
+
 async function loadAndMount(handle, opts = {}) {
+  return withMountLock(handle.name || 'složka', async () => {
   try {
     const tree = await loadFromHandle(handle);
     state.rootHandle = handle;
@@ -846,9 +865,11 @@ async function loadAndMount(handle, opts = {}) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
   }
+  });
 }
 
 async function loadAndMountSnapshot(files, opts = {}) {
+  return withMountLock(opts.tree?.name || 'snapshot', async () => {
   try {
     const tree = opts.tree || await loadFromFiles(files);
     state.rootHandle = null;
@@ -869,23 +890,26 @@ async function loadAndMountSnapshot(files, opts = {}) {
     console.error(err);
     alert(`Nahrání složky selhalo: ${err.message}`);
   }
+  });
 }
 
 async function connectGithub(spec, onStatus) {
-  const tree = await loadFromGithub(spec, onStatus);
-  state.rootHandle = null;
-  state.githubSpec = spec;
-  state.uploadedSnapshot = null;
-  state.originalTree = applyTreeOps(tree);
-  state.currentRootPath = '';
-  state.recenterHistory = [];
-  hideEmptyState();
-  rebuildMindmap('');
-  renderSourceMenu();
-  await idbSetGithubSpec(spec);
-  await idbClearHandle();
-  await idbClearSnapshot();
-  await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+  return withMountLock(`${spec.owner}/${spec.repo}`, async () => {
+    const tree = await loadFromGithub(spec, onStatus);
+    state.rootHandle = null;
+    state.githubSpec = spec;
+    state.uploadedSnapshot = null;
+    state.originalTree = applyTreeOps(tree);
+    state.currentRootPath = '';
+    state.recenterHistory = [];
+    hideEmptyState();
+    rebuildMindmap('');
+    renderSourceMenu();
+    await idbSetGithubSpec(spec);
+    await idbClearHandle();
+    await idbClearSnapshot();
+    await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+  });
 }
 
 async function disconnectSource() {
