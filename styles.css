@@ -1670,6 +1670,162 @@ button {
   border-color: var(--c-yellow);
 }
 
+/* --- search dialog ------------------------------------------------------- */
+.search-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(60px + var(--safe-t)) 20px 20px;
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(6px);
+}
+.search-dialog__panel {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px 18px;
+  width: min(640px, 100%);
+  max-height: calc(100dvh - 80px - var(--safe-t) - var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+  font-family: var(--mono);
+}
+.search-dialog__title {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg);
+}
+.search-dialog__field { margin-bottom: 8px; }
+.search-dialog__input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 11px;
+  box-sizing: border-box;
+  outline: none;
+}
+.search-dialog__input:focus {
+  border-color: var(--c-yellow);
+  background: color-mix(in oklab, var(--c-yellow) 8%, transparent);
+}
+.search-dialog__status {
+  min-height: 18px;
+  margin: 4px 2px 8px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.search-dialog__results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.search-dialog__result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  width: 100%;
+}
+.search-dialog__result:hover,
+.search-dialog__result.is-active {
+  background: color-mix(in oklab, var(--c-yellow) 18%, transparent);
+  border-color: color-mix(in oklab, var(--c-yellow) 40%, transparent);
+}
+.search-dialog__result-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+  flex-shrink: 0;
+  min-width: 50px;
+  text-align: center;
+  margin-top: 1px;
+}
+.search-dialog__result-tag.is-dir {
+  color: var(--c-blue);
+  background: color-mix(in oklab, var(--c-blue) 12%, transparent);
+}
+.search-dialog__result-tag.is-content {
+  color: var(--c-green);
+  background: color-mix(in oklab, var(--c-green) 12%, transparent);
+}
+.search-dialog__result-tag.is-name {
+  color: var(--c-orange);
+  background: color-mix(in oklab, var(--c-orange) 12%, transparent);
+}
+.search-dialog__result-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.search-dialog__result-path {
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-dialog__result-snippet {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.search-dialog__result mark {
+  background: var(--c-yellow);
+  color: #15151a;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.search-dialog__buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.search-dialog__btn {
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.search-dialog__btn:hover {
+  background: color-mix(in oklab, var(--fg) 6%, transparent);
+}
+
 /* --- source loader ------------------------------------------------------- */
 .src-loader {
   position: fixed;
