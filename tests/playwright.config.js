@@ -2,7 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 
 // Lokální preview server identický s `.claude/launch.json` — python3 -m http.server 5173.
 // Pokud už běží (preview MCP), reuse-uje se.
-const PORT = 5173;
+// FAKAN_TEST_PORT env override umožňuje cílit na preview konkrétního worktree,
+// když paralelní session drží defaultní 5173.
+const PORT = Number(process.env.FAKAN_TEST_PORT) || 5173;
 const BASE_URL = `http://localhost:${PORT}`;
 
 export default defineConfig({
@@ -51,7 +53,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'python3 -m http.server 5173',
+    command: `python3 -m http.server ${PORT}`,
     cwd: '..',
     url: BASE_URL,
     reuseExistingServer: true,

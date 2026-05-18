@@ -7,6 +7,16 @@ import { SEL } from './selectors.js';
  * (tree.json načten, #map má text, #labels má aspoň jeden uzel).
  */
 export async function bootApp(page) {
+  // V CI / lokálu bez tokenu GitHub rate-limituje (60/h pro neauth) a default-source
+  // load failuje. Pokud je FAKAN_GH_TOKEN v env, přidá ho do api.github.com requestů
+  // přes route interceptor — auth limit je 5000/h.
+  const token = process.env.FAKAN_GH_TOKEN;
+  if (token) {
+    await page.route(/api\.github\.com|raw\.githubusercontent\.com/, async (route) => {
+      const headers = { ...route.request().headers(), authorization: `Bearer ${token}` };
+      await route.continue({ headers });
+    });
+  }
   await page.goto('/');
   await waitForMindmap(page);
   await page.locator(SEL.canvas).focus();
@@ -71,7 +81,12 @@ export function trackConsoleErrors(page) {
   const errors = [];
   page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
   page.on('console', (msg) => {
-    if (msg.type() === 'error') errors.push(`console.error: ${msg.text()}`);
+    if (msg.type() !== 'error') return;
+    const text = msg.text();
+    // Generický browser log pro 4xx/5xx network response — aplikace ho nemůže potlačit
+    // a fetch je obalený v try/catch (např. optional .fokrc soubor). Ne-aplikační noise.
+    if (/Failed to load resource/i.test(text)) return;
+    errors.push(`console.error: ${text}`);
   });
   return {
     errors,
