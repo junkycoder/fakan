@@ -3,6 +3,9 @@
   "name": "fakan-cz",
   "compatibility_date": "2026-05-18",
   "compatibility_flags": ["nodejs_compat"],
+  "build": {
+    "command": "bash bin/build.sh"
+  },
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
