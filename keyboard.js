@@ -97,13 +97,12 @@ export function setupKeyboard(_unused, vp) {
     return topLevels.find((n) => state.topQuadrant.get(n.path) === q);
   };
 
-  // ← = parent, → = child napříč všemi kvadranty (URL hierarchie).
-  // ↑↓ doplňují tree-nav podle kvadrantu (vizuální orientace v mindmapě).
+  // pro běžný uzel: šipka → action podle kvadrantu (parent leží vždy směrem k rootu)
   const QUAD_ACTIONS = {
-    south: { left: 'parent', right: 'child', up: 'parent', down: 'child' },
-    north: { left: 'parent', right: 'child', down: 'parent', up: 'child' },
+    south: { up: 'parent', down: 'child', left: 'prevSibling', right: 'nextSibling' },
+    north: { down: 'parent', up: 'child', left: 'prevSibling', right: 'nextSibling' },
     east:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
-    west:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
+    west:  { right: 'parent', left: 'child', up: 'prevSibling', down: 'nextSibling' },
   };
 
   window.addEventListener('keydown', (e) => {
@@ -151,30 +150,37 @@ export function setupKeyboard(_unused, vp) {
       k: 'up', j: 'down', h: 'left', l: 'right',
     };
     if (e.key in dirMap) {
-      // Cmd/Ctrl/Alt + šipka = nech prohlížeči (Cmd+← = zpět v historii apod.)
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      e.preventDefault();
       const dir = dirMap[e.key];
-      const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
-      if (!current) return;
-      // Na recenter rootu: ← opustí recenter (přejde na rodiče v originálním stromu),
-      // → vstoupí na prvního potomka. Drží URL hierarchii konzistentní s ostatními uzly.
-      if (current.type === 'root' && state.currentRootPath && (dir === 'left' || dir === 'right')) {
-        if (dir === 'left') {
-          const parts = state.currentRootPath.split('/');
-          const parentPath = parts.slice(0, -1).join('/');
-          recenter(parentPath);
-          const newNode = state.byPath.get(parentPath);
-          if (newNode) {
-            focusNode(newNode);
-            vp.ensureVisible(newNode);
-            if (state.followerPanel) openAsFollower(newNode);
+      // Cmd/Ctrl + ←/→ = URL hierarchie (parent/child) napříč všemi kvadranty,
+      // analogicky k browser "back/forward". Přepíše default browser back.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (dir === 'left' || dir === 'right')) {
+        e.preventDefault();
+        const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
+        if (!current) return;
+        if (current.type === 'root' && state.currentRootPath) {
+          if (dir === 'left') {
+            const parts = state.currentRootPath.split('/');
+            const parentPath = parts.slice(0, -1).join('/');
+            recenter(parentPath);
+            const newNode = state.byPath.get(parentPath);
+            if (newNode) {
+              focusNode(newNode);
+              vp.ensureVisible(newNode);
+              if (state.followerPanel) openAsFollower(newNode);
+            }
+            return;
+          }
+          const kids = state.childrenByPath.get(state.currentRootPath) || [];
+          const k = kids[0];
+          if (k) {
+            focusNode(k);
+            vp.ensureVisible(k);
+            if (state.followerPanel) openAsFollower(k);
           }
           return;
         }
-        // dir === 'right' → první potomek (uvnitř recenter subtree)
-        const kids = state.childrenByPath.get(state.currentRootPath) || [];
-        const next = kids[0];
+        const action = dir === 'left' ? 'parent' : 'child';
+        const next = move(current, action);
         if (next) {
           focusNode(next);
           vp.ensureVisible(next);
@@ -182,6 +188,11 @@ export function setupKeyboard(_unused, vp) {
         }
         return;
       }
+      // Cmd/Ctrl/Alt + jiné šipky = nech prohlížeči (Cmd+↑/↓, Alt+šipky apod.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      e.preventDefault();
+      const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
+      if (!current) return;
       let next = null;
       if (current.type === 'root') {
         next = goToQuadrant(rootQuadrantArrow[dir]);
