@@ -1,7 +1,7 @@
 // Klávesnice: šipky tree-nav, Enter/Space/Esc, panel zkratky (Cmd+Shift+*).
 
 import { state } from './state.js';
-import { focusNode, recenter } from './mindmap.js';
+import { focusNode, recenter, recenterBack, recenterForwardStep } from './mindmap.js';
 import {
   openMain, openMainOnly, openAsFollower,
   closePanel, toggleMax, bringToFront, setActive, getAllPanels,
@@ -97,12 +97,14 @@ export function setupKeyboard(_unused, vp) {
     return topLevels.find((n) => state.topQuadrant.get(n.path) === q);
   };
 
-  // pro běžný uzel: šipka → action podle kvadrantu (parent leží vždy směrem k rootu)
+  // pro běžný uzel: šipka → action podle kvadrantu. Parent action je vyhrazen
+  // pro Cmd+← (snadno se zmáčkne omylem) — v EAST proto plain ← a v WEST plain →
+  // nedělají parent skok.
   const QUAD_ACTIONS = {
     south: { up: 'parent', down: 'child', left: 'prevSibling', right: 'nextSibling' },
     north: { down: 'parent', up: 'child', left: 'prevSibling', right: 'nextSibling' },
-    east:  { left: 'parent', right: 'child', up: 'prevSibling', down: 'nextSibling' },
-    west:  { right: 'parent', left: 'child', up: 'prevSibling', down: 'nextSibling' },
+    east:  { right: 'child', up: 'prevSibling', down: 'nextSibling' },
+    west:  { left: 'child', up: 'prevSibling', down: 'nextSibling' },
   };
 
   window.addEventListener('keydown', (e) => {
@@ -153,6 +155,8 @@ export function setupKeyboard(_unused, vp) {
       const dir = dirMap[e.key];
       // Cmd/Ctrl + ←/→ = URL hierarchie (parent/child) napříč všemi kvadranty,
       // analogicky k browser "back/forward". Přepíše default browser back.
+      // Na rootu: Cmd+← recentruje na parent (a uloží current do forward stacku),
+      // Cmd+→ vrátí poslední slozku z forward stacku — jinak focus na první kid.
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && (dir === 'left' || dir === 'right')) {
         e.preventDefault();
         const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
@@ -161,15 +165,10 @@ export function setupKeyboard(_unused, vp) {
           if (dir === 'left') {
             const parts = state.currentRootPath.split('/');
             const parentPath = parts.slice(0, -1).join('/');
-            recenter(parentPath);
-            const newNode = state.byPath.get(parentPath);
-            if (newNode) {
-              focusNode(newNode);
-              vp.ensureVisible(newNode);
-              if (state.followerPanel) openAsFollower(newNode);
-            }
+            recenterBack(parentPath);
             return;
           }
+          if (recenterForwardStep()) return;
           const kids = state.childrenByPath.get(state.currentRootPath) || [];
           const k = kids[0];
           if (k) {
@@ -194,15 +193,22 @@ export function setupKeyboard(_unused, vp) {
       const current = state.byPath.get(state.focusedPath) || state.byPath.get('');
       if (!current) return;
       let next = null;
+      let actionDefined = false;
       if (current.type === 'root') {
         next = goToQuadrant(rootQuadrantArrow[dir]);
+        actionDefined = true;
       } else {
         const action = QUAD_ACTIONS[current.quadrant]?.[dir];
-        if (action) next = move(current, action);
+        if (action) {
+          actionDefined = true;
+          next = move(current, action);
+        }
       }
       // fallback: když strom-akce nic nevrátí (list, konec sourozenců),
       // zkus geometricky nejbližší uzel — aby šipka nezůstávala "zaseklá".
-      if (!next) next = findNeighbor(current, dir, state.treeNodes);
+      // Když pro daný směr žádná akce není definovaná (např. plain ← v EAST),
+      // nesahej na nic — to je explicitní no-op.
+      if (!next && actionDefined) next = findNeighbor(current, dir, state.treeNodes);
       if (next) {
         focusNode(next);
         vp.ensureVisible(next);

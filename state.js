@@ -108,6 +108,7 @@ export const state = {
   panelNavListener: null,
   routeNavListener: null,
   recenterHistory: [],
+  recenterForward: [],
 
   // klávesnice
   focusedPath: '',

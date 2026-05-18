@@ -10,6 +10,14 @@ import {
 import { syncFromState, computeUrl } from './url.js';
 
 const RECENTER_HIST_KEY = 'fakan.recenterHistory';
+const RECENTER_FWD_KEY = 'fakan.recenterForward';
+
+function persistRecenterStacks() {
+  try {
+    sessionStorage.setItem(RECENTER_HIST_KEY, JSON.stringify(state.recenterHistory));
+    sessionStorage.setItem(RECENTER_FWD_KEY, JSON.stringify(state.recenterForward));
+  } catch {}
+}
 
 // --- char grid (Map<"r|c", {n,s,e,w}>) + nodes -------------------------------
 
@@ -730,7 +738,9 @@ export function rebuildMindmap(focusPath) {
 // recenter — { silent: true } přeskočí navigaci (init z URL si volá recenter
 // sám, URL už je nastavena). User akce dělá klasický full-page redirect, takže
 // Cmd+šipka zpět funguje nativně. recenterHistory přežívá reload přes sessionStorage.
-export function recenter(path, { silent = false } = {}) {
+// mode: 'forward' (normal Enter/klik) zahodí forward stack; 'back' (Cmd+←) /
+// 'redo' (Cmd+→) ho zachová — volající si ho upraví sám.
+export function recenter(path, { silent = false, mode = 'forward' } = {}) {
   const next = path || '';
   if (next === state.currentRootPath) return;
   // ulož předchozí root do historie (dedup, cap)
@@ -741,9 +751,10 @@ export function recenter(path, { silent = false } = {}) {
   }
   // nový root nesmí být zároveň v historii
   state.recenterHistory = state.recenterHistory.filter((p) => p !== next);
+  if (mode === 'forward') state.recenterForward = [];
 
   if (!silent) {
-    try { sessionStorage.setItem(RECENTER_HIST_KEY, JSON.stringify(state.recenterHistory)); } catch {}
+    persistRecenterStacks();
     window.location.assign(computeUrl(next, ''));
     return;
   }
@@ -753,20 +764,48 @@ export function recenter(path, { silent = false } = {}) {
   if (state.routeNavListener) state.routeNavListener();
 }
 
+// Cmd+← — skok na rodičovskou cestu, současný root se uloží do forward stacku,
+// aby šel Cmd+→ vrátit zpátky do stejné slozky.
+export function recenterBack(path) {
+  if (state.currentRootPath != null && state.currentRootPath !== '') {
+    state.recenterForward = state.recenterForward.filter((p) => p !== state.currentRootPath);
+    state.recenterForward.unshift(state.currentRootPath);
+    if (state.recenterForward.length > 30) state.recenterForward.length = 30;
+  }
+  recenter(path, { mode: 'back' });
+}
+
+// Cmd+→ — vrátit se do slozky, ze které jsme šli Cmd+← ven.
+export function recenterForwardStep() {
+  if (!state.recenterForward.length) return false;
+  const next = state.recenterForward.shift();
+  recenter(next, { mode: 'redo' });
+  return true;
+}
+
 // Volá se v bootu — obnoví historii z předchozí navigace ve stejném tabu.
 export function restoreRecenterHistory() {
   try {
     const raw = sessionStorage.getItem(RECENTER_HIST_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      state.recenterHistory = parsed.filter((p) => typeof p === 'string');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        state.recenterHistory = parsed.filter((p) => typeof p === 'string');
+      }
+    }
+    const rawFwd = sessionStorage.getItem(RECENTER_FWD_KEY);
+    if (rawFwd) {
+      const parsedFwd = JSON.parse(rawFwd);
+      if (Array.isArray(parsedFwd)) {
+        state.recenterForward = parsedFwd.filter((p) => typeof p === 'string');
+      }
     }
   } catch {}
 }
 
 export function removeFromHistory(path) {
   state.recenterHistory = state.recenterHistory.filter((p) => p !== path);
+  state.recenterForward = state.recenterForward.filter((p) => p !== path);
   if (state.routeNavListener) state.routeNavListener();
 }
 
