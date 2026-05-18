@@ -842,6 +842,7 @@ async function loadAndMount(handle, opts = {}) {
     await idbClearGithubSpec();
     await idbClearSnapshot();
     await pushRecentSource('handle', handle.name || '~', handle);
+    window.dispatchEvent(new CustomEvent('fakan:source-mounted'));
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
@@ -865,6 +866,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     await idbClearHandle();
     await idbClearGithubSpec();
     await pushRecentSource('snapshot', tree.name || 'snapshot', null);
+    window.dispatchEvent(new CustomEvent('fakan:source-mounted'));
   } catch (err) {
     console.error(err);
     alert(`Nahrání složky selhalo: ${err.message}`);
@@ -886,6 +888,7 @@ async function connectGithub(spec, onStatus) {
   await idbClearHandle();
   await idbClearSnapshot();
   await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+  window.dispatchEvent(new CustomEvent('fakan:source-mounted'));
 }
 
 async function disconnectSource() {
@@ -1299,6 +1302,79 @@ function showGithubDialog() {
   }).catch(() => {});
 
   setTimeout(() => { repoIn.focus(); renderList(); }, 0);
+}
+
+// --- Source picker (404-style: URL ukazuje na cestu, kterou zdroj nezná) ----
+
+export function showSourcePickerDialog(missingPath, opts = {}) {
+  // Idempotent — pokud dialog už je otevřený pro stejnou cestu, nech ho být.
+  const existing = document.querySelector('[data-source-picker]');
+  if (existing) {
+    if (existing.dataset.path === (missingPath || '')) return;
+    existing.remove();
+  }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'gh-dialog';
+  wrap.setAttribute('data-source-picker', '');
+  wrap.dataset.path = missingPath || '';
+  const prettyPath = missingPath ? '/' + missingPath : '/';
+  wrap.innerHTML = `
+    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Volba zdroje">
+      <h2 class="gh-dialog__title">Tuhle cestu neznám</h2>
+      <p class="gh-dialog__lead">
+        V připojeném zdroji není <code class="gh-dialog__path">${escapeHtml(prettyPath)}</code>.
+        Vyberte, odkud ji načíst.
+      </p>
+      <div class="gh-dialog__actions">
+        <button type="button" class="gh-dialog__action" data-pick-gh>
+          <span class="gh-dialog__action-title">Připojit GitHub repo</span>
+          <span class="gh-dialog__action-sub">veřejné nebo přes token</span>
+        </button>
+        <button type="button" class="gh-dialog__action" data-pick-dir>
+          <span class="gh-dialog__action-title">Otevřít složku z disku</span>
+          <span class="gh-dialog__action-sub">živé čtení (Chrome, Edge)</span>
+        </button>
+        <button type="button" class="gh-dialog__action" data-pick-upload>
+          <span class="gh-dialog__action-title">Nahrát složku</span>
+          <span class="gh-dialog__action-sub">snapshot (Safari, Firefox)</span>
+        </button>
+      </div>
+      <div class="gh-dialog__buttons">
+        <button type="button" class="gh-dialog__btn" data-pick-home>Pokračovat na úvod</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); cancelToHome(); } };
+  const cancelToHome = () => {
+    close();
+    try { window.history.replaceState(null, '', '/'); } catch {}
+    opts.onCancel?.();
+  };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) cancelToHome(); });
+
+  wrap.querySelector('[data-pick-gh]').addEventListener('click', () => {
+    close();
+    showGithubDialog();
+  });
+  wrap.querySelector('[data-pick-dir]').addEventListener('click', () => {
+    close();
+    openDirectoryPicker();
+  });
+  wrap.querySelector('[data-pick-upload]').addEventListener('click', () => {
+    close();
+    openUploadPicker();
+  });
+  wrap.querySelector('[data-pick-home]').addEventListener('click', cancelToHome);
+
+  setTimeout(() => { wrap.querySelector('[data-pick-gh]')?.focus(); }, 0);
 }
 
 // --- Branch picker ----------------------------------------------------------

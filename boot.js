@@ -9,6 +9,7 @@ import { setupKeyboard } from './keyboard.js';
 import {
   setupDropZone, renderSourceMenu, mountBadge, renderEmptyHint, showEmptyState,
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadDefaultSource,
+  showSourcePickerDialog,
 } from './sources.js';
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
 
@@ -75,10 +76,13 @@ export async function boot() {
   restoreRecenterHistory();
   initFromUrl();
   window.addEventListener('popstate', initFromUrl);
+  // Po (re)mountu zdroje znovu aplikuj URL — pokud user zvolil zdroj v
+  // dialogu „Volba zdroje" a cesta v něm existuje, otevře se automaticky.
+  window.addEventListener('fakan:source-mounted', initFromUrl);
 }
 
-// Aplikuje URL na state. Volá se při bootu i z popstate.
-// Tolerantní — neznámou cestu prostě ignoruje (URL nech, user uvidí home).
+// Aplikuje URL na state. Volá se při bootu, z popstate i po mountu zdroje.
+// Pokud cestu žádný zdroj nezná, nabídne dialog „Volba zdroje".
 //
 // Trailing slash = dir-only stav (recenter, žádný panel).
 // Bez slashe = file (recenter na rodiče + openMain).
@@ -93,7 +97,13 @@ function initFromUrl() {
   }
 
   const node = findNodeByPath(state.originalTree, path);
-  if (!node) return;
+  if (!node) {
+    // Cesta v URL existuje, ale aktuální zdroj ji nezná (nebo žádný zdroj
+    // není). Nabídni volbu zdroje — po úspěšném mountu se initFromUrl
+    // re-fire-uje přes 'fakan:source-mounted'.
+    showSourcePickerDialog(path);
+    return;
+  }
 
   // 2) dir-only stav (URL končí slashem nebo node je dir)
   if (isDir || node.type === 'dir' || node.type === 'root') {

@@ -1263,6 +1263,58 @@ button {
 }
 .gh-dialog__btn--primary:hover:not(:disabled) { filter: brightness(0.95); }
 
+.gh-dialog__lead {
+  margin: 0 0 14px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+.gh-dialog__path {
+  font: inherit;
+  font-size: 12px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 8%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 6px;
+  word-break: break-all;
+}
+.gh-dialog__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.gh-dialog__action {
+  font: inherit;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gh-dialog__action:hover {
+  background: color-mix(in oklab, var(--c-yellow) 10%, transparent);
+  border-color: color-mix(in oklab, var(--c-yellow) 50%, var(--line));
+}
+.gh-dialog__action:focus-visible {
+  outline: 2px solid var(--c-yellow);
+  outline-offset: 1px;
+}
+.gh-dialog__action-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.gh-dialog__action-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .gh-combo {
   position: relative;
 }
