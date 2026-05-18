@@ -156,8 +156,30 @@ fakan/
 │   └── serve.py           lokální dev server (SPA fallback)
 ├── tests/                 Playwright e2e
 ├── promo/                 screenshoty pro README/landing
+├── mobile/                Capacitor iOS shell (vlastní package.json)
+│   ├── package.json       @capacitor/{core,cli,ios}
+│   ├── capacitor.config.json (appId: cz.fakan.app, webDir: ../dist)
+│   └── ios/               Xcode projekt (App/, Podfile commit; Pods/, public/ ignore)
 └── vendor/                qrcode.min.js
 ```
+
+## iOS (Capacitor)
+
+iOS appka recykluje stejný `dist/` build co web — žádná duplikace zdrojáků, pouze nativní shell v `mobile/`.
+
+Workflow (na Macu s Xcode + CocoaPods):
+```bash
+cd mobile
+npm install              # poprvé
+npm run sync             # = bash ../bin/build.sh && cap sync ios
+npm run open:ios         # otevře Xcode, dál Run/Archive
+```
+
+`cap sync ios` zkopíruje `dist/` do `ios/App/App/public/` (gitignored — vždy čerstvé) a doinstaluje pody. Bundle ID `cz.fakan.app`, app name `fakan`.
+
+Linux/CI dokáže scaffoldnout (`cap add ios`) a vygenerovat web assety, ale samotný build vyžaduje Xcode → primárně macOS workflow.
+
+Default zdroj na iOS je stejný jako web (`<meta name="fakan-default-source" content="github:junkycoder/fakan.cz">` v `index.html` se synchronizuje do bundlu). První spuštění tedy potřebuje net — pokud bude vadit, lze později přidat offline snapshot bundlovaný do appky.
 
 ## Když se user ptá na status
 
