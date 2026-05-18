@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <base href="/" />
   <title>fakan.cz</title>
+  <!-- Výchozí zdroj pro čerstvého návštěvníka (žádný state v IDB).
+       Formát: github:owner/repo[@branch]. Per-doména konfigurace —
+       překryjte v deploy-specific index.html (nebo přes <meta> injected
+       z functions/_middleware.js, pokud chcete úplně dynamicky). -->
+  <meta name="fakan-default-source" content="github:junkycoder/fakan.cz" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>

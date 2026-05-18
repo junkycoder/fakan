@@ -4,7 +4,9 @@ Instrukce pro Claude Code session, která otevírá tento repo.
 
 ## Co to je
 
-`fakan.cz` — osobní web jako mindmapa generovaná z adresářové struktury. Strom 4-kvadrantů, listy = `.md` soubory s YAML frontmatterem, žádný build.
+`fakan` — frontendový „přehrávač" mindmapy. Repo obsahuje **jen UI** (HTML/CSS/ES module JS) a Cloudflare Functions middleware. **Žádná data**.
+
+Content (uživatelův osobní web) žije v separátním repu — pro doménu `fakan.cz` je to [`junkycoder/fakan.cz`](https://github.com/junkycoder/fakan.cz). Při čerstvé návštěvě (bez state v IDB) si fakan default zdroj přečte z `<meta name="fakan-default-source">` v [index.html](index.html). Formát: `github:owner/repo[@branch]`. Per-doménu lze přepsat deploy-specific verzí indexu (nebo middlewarem).
 
 Detailní vize, roadmapa a produktové tarify v [README.md](README.md). **Před prací si ji přečti** — jinak nepochopíš, kam to směřuje.
 
@@ -37,9 +39,8 @@ Krátké iterace. User řekne, co chce → navrhneš / implementuješ → ověř
 
 ### Po každé funkční změně bez explicitní žádosti:
 
-1. Pokud byly přidány/smazány soubory: `python3 bin/gen-tree.py`
-2. Reload preview, ověř (`preview_console_logs` errors + screenshot/eval key flow)
-3. **Commit + push** rovnou na `main`
+1. Reload preview, ověř (`preview_console_logs` errors + screenshot/eval key flow)
+2. **Commit + push** rovnou na `main`
 
 User často pouští **více Claude session paralelně** s čerstvým kontextem. Aby viděl/-a práci kolegyně/-y rovnou na prod, nečekej na finální „nasaď" — commituj malé funkční celky průběžně.
 
@@ -62,15 +63,15 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 
 ## Stack
 
-- `index.html` + `script.js` (ES module) + `styles.css` — bez frameworku
-- `bin/gen-tree.py` → `tree.json` — generátor stromu z adresářů
-- Cloudflare Pages hosting, GitHub repo `junkycoder/fakan`
+- `index.html` + ES module JS (`main.js` → `boot.js` + `mindmap.js`, `panels.js`, `keyboard.js`, `sources.js`, `state.js`, `url.js`, `editor.js`) + `styles.css` — bez frameworku
+- Cloudflare Pages hosting + Cloudflare Functions (`functions/`) — GitHub repo `junkycoder/fakan`
+- Content fetchnutý za běhu z konfigurovaného GitHub repa (default `junkycoder/fakan.cz`); user může v UI přepnout na vlastní FS handle / GitHub repo / nahraný snapshot — všechny zdroje žijí v IDB
 
 ## Architektura — klíčové věci, co je dobré znát
 
 **Char grid.** Mindmapa je na monospace charakter gridu (`CHAR_W=8.4px × LINE_H=18px`). Trunk čáry `├ ─ │ ┼ └ ┌ ┐ ┘ ┤ ┬ ┴` se kreslí jako text v `<pre>`, ne SVG. Pozice uzlů v `(row, col)` jednotkách.
 
-**Layout funkce v `script.js`:**
+**Layout funkce v `mindmap.js`:**
 - `layoutBody(children, pathPrefix, sepTop)` → grid s trunk col=0 (vertikální tree)
 - `flipBodyVertical(body)` / `flipBodyHorizontal(body)` — pro NORTH / WEST kvadranty
 - `composeBody(dst, body, dRow, dCol)` — vloží body do master gridu
@@ -78,7 +79,7 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 - `gridConn(g, r, c, dirs)`, `gridClearDirs(g, r, c, dirs)` — manipulace konektorů
 - `charForDirs({n,s,e,w})` — mapuje set směrů → tree-character
 
-**Module-level state v `script.js`:**
+**Module-level state (rozprostřené napříč moduly, sdílené přes `state.js`):**
 - `originalTree`, `currentRootPath` — pro re-rooting (Shift+Enter na dir, klik na `~/`)
 - `byPath`, `childrenByPath`, `topQuadrant` — tree index, znovu sestavený v `buildTreeIndex()` při bootu i `rebuildMindmap()`
 - `mainPanel` (jeden), `previewPanels` (mapa), `activePanel`, `followerPanel` — okenní stav
@@ -90,7 +91,7 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 - → EAST = `code`, `infra`, `tech`, `src` + `.html/.css/.js/.sh/.py/.json/.ts/.tsx` + dotfiles v rootu
 - ← WEST = `about`, `contacts`, `kontakt`, `kontakty`, `services`, `ja`
 
-Pokud user přidá novou top-level složku jiného jména, fallback je SOUTH. Pokud má smysl jinam, doplň do `DIR_QUADRANT` v `script.js`.
+Pokud content repo přidá novou top-level složku jiného jména, fallback je SOUTH. Pokud má smysl jinam, doplň do `DIR_QUADRANT` v `mindmap.js`.
 
 **Klávesnice:**
 - Šipky = tree-nav per kvadrant (parent/child/siblings, mapování v `QUAD_ACTIONS`)
@@ -123,32 +124,40 @@ Dark mode varianty v `@media (prefers-color-scheme: dark)`.
 
 ## Co NEdělat
 
-- **Nepřidávej framework** (React, Vue, Svelte). Záměr je žádný build, jeden `script.js`.
-- **Nepoužívej npm/yarn**. Žádné `package.json`.
+- **Nepřidávej framework** (React, Vue, Svelte). Záměr je žádný build, vanilla ES moduly.
+- **Nepoužívej npm/yarn**. Žádné `package.json` v rootu repa (testy v `tests/` mají vlastní).
 - **Žádné emoji** v UI ani v kódu.
 - **Žádné marketingové texty** typu „Discover the power of…".
-- **Nekomituj** `CLAUDE.md` do generated tree — `bin/gen-tree.py` ho ignoruje, **neměň to**.
+- **Nepřidávej content do tohoto repa** (`.md` poznámky, projekty, deník atd.) — patří do content repa (`junkycoder/fakan.cz` nebo jiného, podle domény).
 - **Žádné CSS in JS, žádný Tailwind** — vanilla CSS v `styles.css`.
 
 ## Soubory a struktura
 
 ```
 fakan/
-├── index.html             shell + canvas
-├── script.js              layout, render, interakce, klávesnice
+├── index.html             shell + canvas + <meta fakan-default-source>
+├── main.js                entrypoint, importuje boot.js
+├── boot.js                DOMContentLoaded sekvence, URL routing
+├── mindmap.js             char-grid layout, render, klasifikace kvadrantů
+├── panels.js              okenní stav, taby, nav, .md/.html viewer
+├── keyboard.js            klávesnice (šipky, Enter, Space, Cmd+W, …)
+├── sources.js             zdroje (FS handle / GitHub / snapshot), IDB, badge
+├── state.js               sdílený module-level state
+├── url.js                 URL ↔ state sync
+├── editor.js              md editor
 ├── styles.css             paleta, layout, panely, nav
-├── tree.json              generovaná data (commit ano)
+├── pravidla.html          static stránka „pravidla užití"
 ├── README.md              produktová vize + roadmapa
-├── CLAUDE.md              tenhle soubor (ignorovaný gen-tree)
-├── FOK.md                 quick-stamp záznamník
+├── CLAUDE.md              tenhle soubor
+├── FOK.md                 logovník mezi sessionemi
+├── functions/             Cloudflare Pages Functions
+│   ├── _middleware.js     SPA fallback
+│   └── waitlist.js        landing/waitlist endpoint
 ├── bin/
-│   └── gen-tree.py        generátor tree.json
-├── about/                 identita
-├── contacts/
-├── services/              + balicky/
-├── projects/              fakan-cz/, kanban/, promptshare/
-├── diary/2026/MM/         deníkové záznamy po měsících
-└── texty/                 uvahy/, recenze/
+│   └── serve.py           lokální dev server (SPA fallback)
+├── tests/                 Playwright e2e
+├── promo/                 screenshoty pro README/landing
+└── vendor/                qrcode.min.js
 ```
 
 ## Když se user ptá na status

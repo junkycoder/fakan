@@ -959,26 +959,32 @@ export async function tryRestoreSnapshot() {
   }
 }
 
-// Default fallback — pokud uživatel nemá žádný zdroj v IDB, načti statický
-// tree.json z apex domény. Obsah jednotlivých souborů se lazy fetchne přes path.
-export async function tryLoadStaticTree() {
+// Default fallback — pokud uživatel nemá žádný zdroj v IDB, načti repo
+// nakonfigurované přes <meta name="fakan-default-source"> v index.html.
+// Formát hodnoty: "github:owner/repo[@branch]". Per-doména si přepíše
+// meta tag deploy-specific index.htmlem.
+export async function tryLoadDefaultSource() {
+  const spec = readDefaultSourceMeta();
+  if (!spec) return false;
   try {
-    const res = await fetch('tree.json', { cache: 'no-cache' });
-    if (!res.ok) return false;
-    const tree = await res.json();
-    state.rootHandle = null;
-    state.githubSpec = null;
-    state.uploadedSnapshot = null;
-    state.originalTree = tree;
-    state.currentRootPath = '';
-    state.recenterHistory = [];
-    hideEmptyState();
-    rebuildMindmap('');
+    await connectGithub(spec);
     return true;
   } catch (e) {
-    console.warn('static tree load failed', e);
+    console.warn('default source load failed', e);
     return false;
   }
+}
+
+function readDefaultSourceMeta() {
+  const el = document.querySelector('meta[name="fakan-default-source"]');
+  const raw = el?.getAttribute('content')?.trim();
+  if (!raw) return null;
+  const m = raw.match(/^github:([^/\s]+)\/([^@\s]+)(?:@(.+))?$/);
+  if (!m) {
+    console.warn('fakan-default-source: očekávám github:owner/repo[@branch], dostal jsem', raw);
+    return null;
+  }
+  return { owner: m[1], repo: m[2], branch: m[3] || '' };
 }
 
 // --- GitHub dialog ----------------------------------------------------------

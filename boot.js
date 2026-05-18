@@ -8,7 +8,7 @@ import {
 import { setupKeyboard } from './keyboard.js';
 import {
   setupDropZone, renderSourceMenu, mountBadge, renderEmptyHint, showEmptyState,
-  tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadStaticTree,
+  tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadDefaultSource,
 } from './sources.js';
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
 
@@ -71,7 +71,7 @@ export async function boot() {
     if (await tryRestoreSource()) return;
     if (await tryRestoreGithub()) return;
     if (await tryRestoreSnapshot()) return;
-    await tryLoadStaticTree();
+    await tryLoadDefaultSource();
   })();
   initFromUrl();
   window.addEventListener('popstate', initFromUrl);
