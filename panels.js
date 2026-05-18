@@ -109,10 +109,12 @@ function defaultPanelMode(node) {
 
 // Injekt do <head> srcdoc iframe:
 //   1) style — srcdoc nemá <base>, takže relativní href="styles.css" se resolvne
-//      vůči parentu a načte fakan-app CSS s `body { overflow: hidden }`.
-//      Tímhle override-em zaručíme, že obsah panelu jde scrollovat.
+//      vůči parentu a načte fakan-app CSS s `body { overflow: hidden; height: 100dvh }`.
+//      Resetneme to: html je scroll-kontejner (height + overflow:auto), body roste
+//      s obsahem. Taky reset touch-action + overscroll-behavior, které fakan styly
+//      nastavují pro hlavní stránku a v iframe by mohly blokovat gesta.
 //   2) script — odchytí klik na <a> a postMessage parentovi pro panel-routing.
-const IFRAME_HEAD_INJECT = `<style>html,body{height:auto !important;min-height:100% !important;overflow:auto !important}</style><script>
+const IFRAME_HEAD_INJECT = `<style>html{height:100% !important;overflow:auto !important;touch-action:auto !important;overscroll-behavior:auto !important}body{height:auto !important;min-height:100% !important;overflow:visible !important;touch-action:auto !important;overscroll-behavior:auto !important}</style><script>
 (function(){
   document.addEventListener('click', function(e){
     var a = e.target.closest && e.target.closest('a[href]');
