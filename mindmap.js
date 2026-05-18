@@ -77,6 +77,28 @@ const charForDirs = (d) => {
   return [' ','│','│','│','─','└','┌','├','─','┘','┐','┤','─','┴','┬','┼'][k];
 };
 
+// Truncation: ve složkách s mnoha plochými soubory ukážeme jen posledních N
+// (abecedně, reverzně ~ „nejnovější" pro datované názvy) + virtual „more" uzel.
+// Klik na more recentuje do té složky, kde uživatel vidí celou strukturu.
+const TRUNCATE_THRESHOLD = 12;
+const TRUNCATE_KEEP = 8;
+
+function maybeTruncate(children, parentPath) {
+  if (!children || children.length <= TRUNCATE_THRESHOLD) return children;
+  if (children.some((c) => c.type === 'more')) return children;
+  const dirs = children.filter((c) => c.type === 'dir');
+  const files = children.filter((c) => c.type === 'file');
+  const budget = Math.max(1, TRUNCATE_KEEP - dirs.length);
+  if (files.length <= budget) return children;
+  const keep = files.slice(-budget);
+  const hidden = files.length - keep.length;
+  return [...dirs, ...keep, {
+    name: `+ ${hidden} dalších`,
+    type: 'more',
+    targetPath: parentPath || '',
+  }];
+}
+
 // --- layout: down-body (standardní `tree`) -----------------------------------
 // Vrátí nový `body` grid s trunk col = 0 a první dítě na row 0.
 // `sepTop` = počet prázdných řádků mezi top-level dětmi (vizuální oddělení skupin).
@@ -91,6 +113,7 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
   let cursor = 0;
 
   const walk = (subs, prefix, parentPath, depth) => {
+    subs = maybeTruncate(subs, parentPath);
     const n = subs.length;
     for (let i = 0; i < n; i++) {
       // prázdný řádek mezi top-level dětmi: vždy, ne jen u skupin s children.
@@ -107,13 +130,20 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
       }
 
       const child = subs[i];
+      const isMore = child.type === 'more';
       const isLast = i === n - 1;
       const row = cursor++;
       if (depth === 0) g.topRows.push(row);
       // pro file uzly konstruuj path z `filename` (web uzly mají `name` jen jako display label);
       // pro dir je filename undefined → fallback na name.
-      const seg = child.type === 'file' ? (child.filename || child.name) : child.name;
-      const path = parentPath ? `${parentPath}/${seg}` : seg;
+      // 'more' uzly mají syntetickou cestu, aby nekolidovaly s reálnými dětmi.
+      let path;
+      if (isMore) {
+        path = parentPath ? `${parentPath}/__more__` : '__more__';
+      } else {
+        const seg = child.type === 'file' ? (child.filename || child.name) : child.name;
+        path = parentPath ? `${parentPath}/${seg}` : seg;
+      }
 
       // pokračující trunk z předků v této řadě
       for (let j = 0; j < prefix.length; j++) {
@@ -130,17 +160,20 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
         name: child.name,
         type: child.type,
         path,
-        hasChildren: !!(child.children && child.children.length),
-        ...fileMeta(child),
+        hasChildren: !isMore && !!(child.children && child.children.length),
+        ...(isMore ? { targetPath: child.targetPath } : fileMeta(child)),
       });
 
-      if (child.children && child.children.length) {
+      if (!isMore && child.children && child.children.length) {
+        // truncate child.children jednou — propaguje se jak do branchify (split),
+        // tak do lineárního walku níž; zabrání dvojím „more" uzlům na obou polovinách.
+        const kids = maybeTruncate(child.children, path);
         // 2. úroveň — rozkošatění top-level uzlů s ≥6 dětmi do W+S+E sub-stran.
         // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
         // Práh 6 (ne 3) — menší uzly zůstanou lineární, aby sub-strany sourozenců
         // uvnitř stejného kvadrantu na sebe nenarážely.
-        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= 6) {
-          const sub = layoutSubBranches(child, path);
+        if (branchify && depth === 0 && child.type === 'dir' && kids.length >= 6) {
+          const sub = layoutSubBranches(kids === child.children ? child : { ...child, children: kids }, path);
           composeBody(g, sub, row, cc + 4);
           const sb = bbox(sub);
           // Posun cursoru pod nejnižší řadu sub-strany (S forward jde dolů).
@@ -158,7 +191,7 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
           continue;
         }
         const newPrefix = prefix + (isLast ? '    ' : '|   ');
-        walk(child.children, newPrefix, path, depth + 1);
+        walk(kids, newPrefix, path, depth + 1);
       }
     }
   };
@@ -519,6 +552,9 @@ export function nodeClass(n) {
   let base;
   if (n.type === 'root') {
     base = 'n--root n--depth-0';
+  } else if (n.type === 'more') {
+    const depth = (n.path || '').split('/').filter(Boolean).length;
+    base = `n--depth-${Math.min(depth, 5)} n--more`;
   } else {
     const depth = (n.path || '').split('/').filter(Boolean).length;
     base = `n--depth-${Math.min(depth, 5)}`;
@@ -562,6 +598,7 @@ export function paint(map, labels, hits, grid) {
     el.type = 'button';
     el.dataset.path = n.path || '/';
     el.dataset.type = n.type;
+    if (n.targetPath != null) el.dataset.targetPath = n.targetPath || '/';
     el.style.top = `${n.localRow * LINE_H}px`;
     el.style.left = `${n.localCol * CHAR_W}px`;
     el.style.width = `${n.name.length * CHAR_W}px`;
@@ -680,9 +717,12 @@ export function buildTreeIndex(nodes) {
   byPath.clear();
   childrenByPath.clear();
   topQuadrant.clear();
-  for (const n of nodes) byPath.set(n.path || '', n);
   for (const n of nodes) {
-    if (n.type === 'root') continue;
+    if (n.type === 'more') continue;
+    byPath.set(n.path || '', n);
+  }
+  for (const n of nodes) {
+    if (n.type === 'root' || n.type === 'more') continue;
     const parts = n.path.split('/');
     const parentPath = parts.slice(0, -1).join('/');
     if (!childrenByPath.has(parentPath)) childrenByPath.set(parentPath, []);
@@ -694,6 +734,14 @@ export function buildTreeIndex(nodes) {
   // přiřaď kvadrant všem potomkům (zděděný od top-level předka)
   for (const n of nodes) {
     if (n.type === 'root') { n.quadrant = null; continue; }
+    if (n.type === 'more') {
+      // more uzel zdědí kvadrant rodiče (vykreslí se uvnitř téhož sloupce stromu)
+      const parts = n.path.split('/');
+      const parentPath = parts.slice(0, -1).join('/');
+      const parent = byPath.get(parentPath);
+      n.quadrant = parent ? parent.quadrant : null;
+      continue;
+    }
     const top = topLevelAncestor(n.path, state.currentRootPath);
     n.quadrant = topQuadrant.get(top);
   }
@@ -867,17 +915,19 @@ export function renderTreeInlineHTML(grid) {
     for (const n of arr) {
       out += escapeHtml(line.slice(cursor, n.localCol).join(''));
       const dp = n.path == null ? '/' : (n.path || '/');
+      const isMore = n.type === 'more';
       const isDir = n.type === 'dir' || n.type === 'root';
       // root dir-panelu nesmaž (mažeš jeho ze stromu nadřazeným panelem);
       // jinak povolíme `-`. `+` na všech dir/root.
       const isPanelRoot = n.type === 'root' || dp === '/';
-      const addBtn = isDir
+      const addBtn = isDir && !isMore
         ? `<button class="n-add" type="button" data-add-parent="${escapeHtml(dp)}" tabindex="-1" aria-label="Přidat do ${escapeHtml(n.name)}">+</button>`
         : '';
-      const rmBtn = !isPanelRoot
+      const rmBtn = !isPanelRoot && !isMore
         ? `<button class="n-rm" type="button" data-rm-path="${escapeHtml(dp)}" data-rm-type="${escapeHtml(n.type)}" tabindex="-1" aria-label="Smazat ${escapeHtml(n.name)}">−</button>`
         : '';
-      out += `<span class="n ${nodeClass(n)}" data-path="${escapeHtml(dp)}" data-type="${escapeHtml(n.type)}" role="button" tabindex="0">${escapeHtml(n.name)}${addBtn}${rmBtn}</span>`;
+      const targetAttr = isMore ? ` data-target-path="${escapeHtml(n.targetPath || '/')}"` : '';
+      out += `<span class="n ${nodeClass(n)}" data-path="${escapeHtml(dp)}" data-type="${escapeHtml(n.type)}"${targetAttr} role="button" tabindex="0">${escapeHtml(n.name)}${addBtn}${rmBtn}</span>`;
       cursor = n.localCol + n.name.length;
     }
     out += escapeHtml(line.slice(cursor).join(''));

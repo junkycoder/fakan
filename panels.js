@@ -680,6 +680,13 @@ function setupPanelInteractions(panel) {
     const raw = span.dataset.path;
     if (raw == null) return;
     const path = raw === '/' ? '' : raw;
+    if (span.dataset.type === 'more') {
+      const target = span.dataset.targetPath || '';
+      e.preventDefault();
+      e.stopPropagation();
+      recenter(target === '/' ? '' : target);
+      return;
+    }
     const node = state.byPath.get(path);
     if (!node) return;
     e.preventDefault();

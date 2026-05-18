@@ -37,6 +37,12 @@ export async function boot() {
     // hit button nesmí zůstat aktivní v DOM, jinak by Space na nej spustil click znova
     el.blur();
     const path = el.dataset.path;
+    // 'more' uzel = recenter do parent složky (vidí všechny děti); single i dbl klik stejně
+    if (el.dataset.type === 'more') {
+      const target = el.dataset.targetPath || '';
+      recenter(target === '/' ? '' : target);
+      return;
+    }
     const node = state.byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);

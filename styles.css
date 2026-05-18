@@ -134,6 +134,7 @@ button {
 .labels .n--web { color: var(--c-teal); }
 .labels .n--other { color: var(--muted); }
 .labels .n--empty { color: var(--muted); opacity: 0.55; }
+.labels .n--more  { color: var(--muted); font-style: italic; }
 
 /* hloubková hierarchie — vizuálně velký střed, čím dál, tím menší.
    Scale (ne font-size) zachovává monospace grid sirku spanu pro hit zóny.
@@ -507,6 +508,7 @@ button {
 .src-tree .n--code   { color: var(--c-green); }
 .src-tree .n--web    { color: var(--c-teal); }
 .src-tree .n--other  { color: var(--muted); }
+.src-tree .n--more   { color: var(--muted); font-style: italic; }
 .src-tree .n--empty  { color: var(--muted); opacity: 0.55; }
 
 /* + a − tlačítka u uzlu — vyplouvají z toku (position:absolute), aby nešifovaly
