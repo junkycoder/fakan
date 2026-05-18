@@ -200,10 +200,14 @@ let _msgListenerInstalled = false;
 function installIframeMessageListener() {
   if (_msgListenerInstalled) return;
   _msgListenerInstalled = true;
+  // Defense-in-depth: same-origin iframe má origin = location.origin,
+  // srcdoc iframe má origin "null". Cokoliv jiného je cizí window (popup attack).
+  // Druhá vrstva: e.source musí být contentWindow některého z našich iframů.
+  const allowedOrigins = new Set([window.location.origin, 'null']);
   window.addEventListener('message', (e) => {
+    if (!allowedOrigins.has(e.origin)) return;
     const d = e.data;
     if (!d || d.type !== 'fakan-link') return;
-    // najdi panel, jehož iframe poslal zprávu
     const panels = allPanels();
     const panel = panels.find((p) => {
       const ifr = p.element.querySelector('iframe.iframe-preview');
@@ -265,7 +269,9 @@ function renderedBody(node) {
     // Sandbox bez allow-same-origin = snapshot nevidí na fakan.cz state (IndexedDB, localStorage).
     const src = encodeURI(node.path || '');
     const titleAttr = escapeHtml(node.title || node.url || node.name);
-    return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" referrerpolicy="no-referrer" title="${titleAttr}"></iframe>`;
+    // Sandbox bez allow-popups-to-escape-sandbox: snapshot může otevřít popup,
+    // ale ten zůstane sandboxovaný (žádné escapování sandboxu skriptem snapshotu).
+    return `<iframe class="iframe-preview" src="${src}" sandbox="allow-scripts allow-popups" referrerpolicy="no-referrer" title="${titleAttr}"></iframe>`;
   }
   const mk = mediaKind(node);
   if (mk) {
