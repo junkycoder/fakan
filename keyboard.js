@@ -4,7 +4,7 @@ import { state } from './state.js';
 import { focusNode, recenter, recenterBack, recenterForwardStep } from './mindmap.js';
 import {
   openMain, openMainOnly, openAsFollower,
-  closePanel, toggleMax, bringToFront, setActive, getAllPanels,
+  closePanel, toggleMax, dockPanel, bringToFront, setActive, getAllPanels,
 } from './panels.js';
 
 function findNeighbor(current, direction, nodes) {
@@ -146,6 +146,17 @@ export function setupKeyboard(_unused, vp) {
     }
 
     if (e.key === '0') { vp.center(); return; }
+
+    // Shift+H/J/K/L = dock aktivního panelu (vim `<C-w>HJKL` ekvivalent).
+    // Lowercase h/j/k/l jsou navigace ve stromu (řeší se níž v dirMap).
+    if (e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const dockMap = { H: 'left', J: 'bottom', K: 'top', L: 'right' };
+      if (e.key in dockMap && state.activePanel) {
+        e.preventDefault();
+        dockPanel(state.activePanel, dockMap[e.key]);
+        return;
+      }
+    }
 
     const dirMap = {
       ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',

@@ -514,11 +514,7 @@ function createPanel(node, variant) {
       ${webRef}
       <div class="panel__actions">
         ${buildable ? `<button class="panel__btn panel__btn--play${initialMode === 'rendered' ? ' is-active' : ''}" type="button" data-panel-play title="${playTitle}" aria-label="Sestavit">${playLabel}</button>` : ''}
-        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="left" title="Vlevo" aria-label="Vlevo">◧</button>
-        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="right" title="Vpravo" aria-label="Vpravo">◨</button>
-        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="top" title="Nahoře" aria-label="Nahoře">▔</button>
-        <button class="panel__btn panel__btn--dock" type="button" data-panel-dock="bottom" title="Dole" aria-label="Dole">▁</button>
-        <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat" aria-label="Maximalizovat">▢</button>
+        <button class="panel__btn panel__btn--max" type="button" data-panel-max title="Maximalizovat (Shift+H/J/K/L = dock vlevo/dolů/nahoru/vpravo)" aria-label="Maximalizovat">▢</button>
         <button class="panel__btn panel__btn--close" type="button" data-panel-close title="Zavřít" aria-label="Zavřít">×</button>
       </div>
     </header>
@@ -549,17 +545,12 @@ const DOCK_STYLES = {
 };
 
 function updateDockButtons(panel) {
-  const dock = panel.dock;
-  for (const btn of panel.element.querySelectorAll('[data-panel-dock]')) {
-    btn.classList.toggle('is-active', btn.dataset.panelDock === dock);
-  }
   const maxBtn = panel.element.querySelector('[data-panel-max]');
-  if (maxBtn) {
-    const isFull = dock === 'full';
-    maxBtn.classList.toggle('is-active', isFull);
-    maxBtn.textContent = isFull ? '▭' : '▢';
-    maxBtn.title = isFull ? 'Obnovit' : 'Maximalizovat';
-  }
+  if (!maxBtn) return;
+  const isFull = panel.dock === 'full';
+  maxBtn.classList.toggle('is-active', isFull);
+  maxBtn.textContent = isFull ? '▭' : '▢';
+  maxBtn.title = isFull ? 'Obnovit' : 'Maximalizovat (Shift+H/J/K/L = dock vlevo/dolů/nahoru/vpravo)';
 }
 
 export function dockPanel(panel, zone) {
@@ -598,6 +589,45 @@ function restorePanel(panel) {
   panel.dock = null;
   panel.isMax = false;
   updateDockButtons(panel);
+}
+
+// Snap detection podle pozice kurzoru u okraje viewportu.
+// 24px proužek u kraje obrazovky → snap do dané zóny.
+// 80px u spodního okraje aby nav (~64px + safe-b) nebyl ve sweet-spotu.
+const SNAP_T = 24;
+function getSnapZone(x, y) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  if (x < SNAP_T) return 'left';
+  if (x > vw - SNAP_T) return 'right';
+  if (y < SNAP_T) return 'top';
+  if (y > vh - 80) return 'bottom';
+  return null;
+}
+
+// --- snap preview overlay --------------------------------------------------
+
+let _snapPreview = null;
+function ensureSnapPreview() {
+  if (_snapPreview && _snapPreview.isConnected) return _snapPreview;
+  const el = document.createElement('div');
+  el.className = 'snap-preview';
+  el.setAttribute('aria-hidden', 'true');
+  document.getElementById('panels').appendChild(el);
+  _snapPreview = el;
+  return el;
+}
+function showSnapPreview(zone) {
+  const el = ensureSnapPreview();
+  if (!zone) { el.classList.remove('is-visible'); return; }
+  const s = DOCK_STYLES[zone];
+  el.style.left = s.left; el.style.top = s.top;
+  el.style.right = s.right; el.style.bottom = s.bottom;
+  el.style.width = s.width; el.style.height = s.height;
+  el.classList.add('is-visible');
+}
+function hideSnapPreview() {
+  if (_snapPreview) _snapPreview.classList.remove('is-visible');
 }
 
 function positionPanel(panel) {
@@ -806,25 +836,21 @@ function setupPanelInteractions(panel) {
   }
 
   maxBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleMax(panel); });
-  for (const btn of el.querySelectorAll('[data-panel-dock]')) {
-    btn.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      dockPanel(panel, btn.dataset.panelDock);
-    });
-  }
   head.addEventListener('dblclick', (e) => {
     if (e.target.closest('.panel__btn')) return;
     toggleMax(panel);
   });
 
-  // drag
+  // drag (+ snap k okrajům jako Windows aero / macOS magnet)
   let dragging = false;
   let startX = 0, startY = 0, startLeft = 0, startTop = 0;
+  let snapZone = null;
   head.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.panel__btn')) return;
-    if (panel.dock) return;
+    if (panel.dock) restorePanel(panel); // začneš tahat dokovaný panel → odepni
     bringToFront(el);
     dragging = true;
+    snapZone = null;
     head.classList.add('is-dragging');
     const rect = el.getBoundingClientRect();
     el.style.left = `${rect.left}px`;
@@ -840,13 +866,21 @@ function setupPanelInteractions(panel) {
     if (!dragging) return;
     el.style.left = `${startLeft + (e.clientX - startX)}px`;
     el.style.top = `${startTop + (e.clientY - startY)}px`;
+    snapZone = getSnapZone(e.clientX, e.clientY);
+    showSnapPreview(snapZone);
   });
   const endDrag = (e) => {
     if (!dragging) return;
     dragging = false;
     head.classList.remove('is-dragging');
     try { head.releasePointerCapture(e.pointerId); } catch {}
-    rememberPanelPos(el);
+    hideSnapPreview();
+    if (snapZone) {
+      dockPanel(panel, snapZone);
+      snapZone = null;
+    } else {
+      rememberPanelPos(el);
+    }
   };
   head.addEventListener('pointerup', endDrag);
   head.addEventListener('pointercancel', endDrag);
