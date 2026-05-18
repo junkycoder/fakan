@@ -8,6 +8,7 @@
 # raw atd.) — stejná logika jako functions/_middleware.js v produkci.
 #
 # Spuštění: python3 bin/serve.py [PORT]  (default 5173, env PORT prioritně)
+# Bind na 127.0.0.1 default; FAKAN_PUBLIC=1 otevře 0.0.0.0 pro mobile/test.
 
 import os
 import sys
@@ -32,8 +33,10 @@ class SpaHandler(SimpleHTTPRequestHandler):
 def main():
     port_env = os.environ.get('PORT')
     port = int(port_env) if port_env else int(sys.argv[1]) if len(sys.argv) > 1 else 5173
-    server = ThreadingHTTPServer(('0.0.0.0', port), SpaHandler)
-    print(f'fakan dev server → http://localhost:{port}')
+    host = '0.0.0.0' if os.environ.get('FAKAN_PUBLIC') else '127.0.0.1'
+    server = ThreadingHTTPServer((host, port), SpaHandler)
+    bind_hint = f' (bind {host})' if host != '127.0.0.1' else ''
+    print(f'fakan dev server → http://localhost:{port}{bind_hint}')
     try:
         server.serve_forever()
     except KeyboardInterrupt:
