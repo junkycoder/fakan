@@ -832,7 +832,8 @@ export function maybeOpenDefaultIndex() {
   if (window.location.pathname !== '/') return;
   const idx = state.byPath.get('index.html');
   if (!idx || idx.type !== 'file') return;
-  openMain(idx);
+  const panel = openMain(idx);
+  if (panel) toggleMax(panel);
 }
 
 export function openMain(node) {
