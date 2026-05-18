@@ -961,6 +961,160 @@ button {
   margin-top: 2px;
 }
 
+/* --- nav: git sekce ------------------------------------------------------ */
+.nav__git { position: relative; outline: none; }
+.nav__git[hidden] { display: none; }
+.nav__git-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--c-green);
+  padding: 2px 8px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  max-width: 24vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nav__git-glyph { opacity: 0.8; }
+.nav__git:hover .nav__git-btn,
+.nav__git:focus-within .nav__git-btn { filter: brightness(1.1); }
+
+.nav__git-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  width: min(300px, calc(100vw - 32px));
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+}
+.nav__git-dropdown::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0;
+  bottom: -8px;
+  height: 8px;
+}
+.nav__git:hover .nav__git-dropdown,
+.nav__git:focus-within .nav__git-dropdown { display: flex; }
+.nav__git.is-open .nav__git-dropdown { display: flex; }
+
+.nav__git-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 4px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.nav__git-repo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.nav__git-branch-switch {
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.nav__git-branch-switch:hover { color: var(--c-yellow); }
+
+.nav__git-changes {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg);
+  max-height: 140px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: color-mix(in oklab, var(--fg) 3%, transparent);
+}
+.nav__git-changes-empty { color: var(--muted); font-style: italic; }
+.nav__git-changes ul { list-style: none; margin: 0; padding: 0; }
+.nav__git-changes li {
+  padding: 1px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav__git-changes-count {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.nav__git-input,
+.nav__git-token {
+  width: 100%;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  outline: none;
+}
+.nav__git-input:focus,
+.nav__git-token:focus {
+  border-color: var(--c-green);
+  background: color-mix(in oklab, var(--c-green) 8%, transparent);
+}
+.nav__git-token-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.nav__git-token-help {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 10px;
+}
+.nav__git-token-help:hover { color: var(--c-yellow); }
+
+.nav__git-status {
+  min-height: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.nav__git-status[data-kind="err"] { color: var(--c-red); }
+.nav__git-status[data-kind="ok"] { color: var(--c-green); }
+
+.nav__git-publish {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid var(--c-green);
+  border-radius: 6px;
+  background: var(--c-green);
+  color: var(--bg);
+  cursor: pointer;
+}
+.nav__git-publish:hover:not(:disabled) { filter: brightness(0.95); }
+.nav__git-publish:disabled { opacity: 0.5; cursor: default; }
+
 /* --- nav na mobilu: roztáhnout ostrov ------------------------------------ */
 @media (max-width: 600px) {
   .nav {
@@ -984,6 +1138,14 @@ button {
   }
   .nav__source-btn { max-width: 38vw; }
   .nav__home-btn { max-width: 32vw; }
+  .nav__git-btn { max-width: 30vw; }
+  .nav__git-dropdown {
+    position: fixed;
+    bottom: calc(60px + var(--safe-b));
+    left: 12px;
+    right: 12px;
+    width: auto;
+  }
 }
 
 /* --- GitHub dialog ------------------------------------------------------- */
@@ -1021,6 +1183,14 @@ button {
 }
 .gh-dialog__field em { font-style: normal; opacity: 0.7; }
 .gh-dialog__field span { display: block; margin-bottom: 4px; }
+.gh-dialog__link {
+  float: right;
+  font-size: 11px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.gh-dialog__link:hover { color: var(--c-yellow); }
 .gh-dialog__field input {
   width: 100%;
   font: inherit;

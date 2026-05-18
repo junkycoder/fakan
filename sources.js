@@ -1639,52 +1639,81 @@ async function ghPush(spec, message, files, onStatus) {
   return { sha: newCommit.sha, unchanged: false };
 }
 
-function showGithubPushDialog() {
-  if (!state.githubSpec) return;
-  document.querySelector('[data-gh-push-dialog]')?.remove();
+function renderGitMenu() {
+  const wrap = document.querySelector('[data-nav-git]');
+  if (!wrap) return;
+  if (!state.githubSpec) {
+    wrap.setAttribute('hidden', '');
+    return;
+  }
+  wrap.removeAttribute('hidden');
+
   const spec = state.githubSpec;
-  const wrap = document.createElement('div');
-  wrap.className = 'gh-dialog';
-  wrap.setAttribute('data-gh-push-dialog', '');
-  wrap.innerHTML = `
-    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Pushnout změny">
-      <h2 class="gh-dialog__title">Pushnout do ${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</h2>
-      <label class="gh-dialog__field">
-        <span>Commit message</span>
-        <input type="text" data-gh-msg autocomplete="off" spellcheck="false">
-      </label>
-      <label class="gh-dialog__field">
-        <span>Token <em>${spec.token ? '(uložený — vyplňte jen pro přepsání)' : '(potřeba pro push)'}</em></span>
-        <input type="password" data-gh-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
-      </label>
-      <p class="gh-dialog__hint">Pushnu na větev <strong>${escapeHtml(spec.branch || 'main')}</strong>. Přidám všechny textové soubory ze stromu (binární a smazané se neřeší).</p>
-      <div class="gh-dialog__status" data-gh-status></div>
-      <div class="gh-dialog__buttons">
-        <button type="button" class="gh-dialog__btn" data-gh-cancel>Zrušit</button>
-        <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-gh-ok>Pushnout</button>
+  const branch = spec.branch || 'main';
+  const label = wrap.querySelector('[data-git-label]');
+  if (label) label.textContent = branch;
+
+  const menu = wrap.querySelector('[data-git-menu]');
+  if (!menu) return;
+
+  const tokenFieldHtml = spec.token ? '' : `
+    <div>
+      <div class="nav__git-token-row">
+        <span>Token <em>(potřeba pro push)</em></span>
+        <a class="nav__git-token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">kde ho vzít?</a>
       </div>
+      <input class="nav__git-token" type="password" data-git-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
     </div>
   `;
-  document.body.appendChild(wrap);
-  const msgIn = wrap.querySelector('[data-gh-msg]');
-  const tokenIn = wrap.querySelector('[data-gh-token]');
-  const okBtn = wrap.querySelector('[data-gh-ok]');
-  const cancelBtn = wrap.querySelector('[data-gh-cancel]');
-  const statusEl = wrap.querySelector('[data-gh-status]');
-  msgIn.value = 'update z fakan.cz';
 
-  const close = () => { wrap.remove(); document.removeEventListener('keydown', onKey); };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-  document.addEventListener('keydown', onKey);
-  cancelBtn.addEventListener('click', close);
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  menu.innerHTML = `
+    <div class="nav__git-head">
+      <span class="nav__git-repo">${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</span>
+      <a class="nav__git-branch-switch" href="#" data-git-branch>změnit větev</a>
+    </div>
+    <div class="nav__git-changes" data-git-changes>
+      <div class="nav__git-changes-empty">načítám změny…</div>
+    </div>
+    <input class="nav__git-input" type="text" data-git-msg placeholder="popis změny" autocomplete="off" spellcheck="false" value="update z fakan.cz">
+    ${tokenFieldHtml}
+    <div class="nav__git-status" data-git-status></div>
+    <button type="button" class="nav__git-publish" data-git-publish>Publish</button>
+  `;
 
-  const submit = async () => {
+  const changesEl = menu.querySelector('[data-git-changes]');
+  const msgIn = menu.querySelector('[data-git-msg]');
+  const tokenIn = menu.querySelector('[data-git-token]');
+  const statusEl = menu.querySelector('[data-git-status]');
+  const publishBtn = menu.querySelector('[data-git-publish]');
+  const branchSwitch = menu.querySelector('[data-git-branch]');
+
+  branchSwitch.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeGitMenu();
+    showBranchPicker();
+  });
+
+  // seznam změn (vše, co se odešle) — async, ale fast
+  collectGithubPushFiles(state.originalTree).then((files) => {
+    if (!files.length) {
+      changesEl.innerHTML = '<div class="nav__git-changes-empty">žádné textové soubory</div>';
+      return;
+    }
+    const items = files.map((f) => `<li>${escapeHtml(f.path)}</li>`).join('');
+    changesEl.innerHTML = `
+      <div class="nav__git-changes-count">${files.length} ${files.length === 1 ? 'soubor' : files.length < 5 ? 'soubory' : 'souborů'} k odeslání</div>
+      <ul>${items}</ul>
+    `;
+  }).catch(() => {
+    changesEl.innerHTML = '<div class="nav__git-changes-empty">chyba při čtení stromu</div>';
+  });
+
+  const publish = async () => {
     const message = msgIn.value.trim();
-    if (!message) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Vyplňte commit message.'; msgIn.focus(); return; }
-    const token = tokenIn.value.trim() || spec.token;
-    if (!token) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Pro push potřebujete token s repo přístupem.'; tokenIn.focus(); return; }
-    okBtn.disabled = true; cancelBtn.disabled = true;
+    if (!message) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Vyplňte popis změny.'; msgIn.focus(); return; }
+    const token = (tokenIn?.value.trim()) || spec.token;
+    if (!token) { statusEl.dataset.kind = 'err'; statusEl.textContent = 'Pro push potřebujete token.'; tokenIn?.focus(); return; }
+    publishBtn.disabled = true;
     statusEl.dataset.kind = 'info';
     statusEl.textContent = 'sbírám soubory…';
     try {
@@ -1692,42 +1721,47 @@ function showGithubPushDialog() {
       if (!files.length) {
         statusEl.dataset.kind = 'err';
         statusEl.textContent = 'Žádné textové soubory s obsahem.';
-        okBtn.disabled = false; cancelBtn.disabled = false;
+        publishBtn.disabled = false;
         return;
       }
-      const pushSpec = { ...spec, token, branch: spec.branch || 'main' };
+      const pushSpec = { ...spec, token, branch };
       const res = await ghPush(pushSpec, message, files, (m) => { statusEl.textContent = m; });
       if (res.unchanged) {
         statusEl.dataset.kind = 'err';
-        statusEl.textContent = 'Strom je shodný s remote — nepushlo se nic.';
-        okBtn.disabled = false; cancelBtn.disabled = false;
+        statusEl.textContent = 'Strom je shodný s remote — nic nepushlo.';
+        publishBtn.disabled = false;
         return;
       }
-      statusEl.dataset.kind = 'info';
+      statusEl.dataset.kind = 'ok';
       statusEl.textContent = `Hotovo — commit ${res.sha.slice(0, 7)}.`;
-      // pokud user vyplnil nový token, ulož ho do spec (zachová ho mezi sessionemi)
-      if (tokenIn.value.trim() && tokenIn.value.trim() !== spec.token) {
+      if (tokenIn?.value.trim() && tokenIn.value.trim() !== spec.token) {
         state.githubSpec = { ...spec, token: tokenIn.value.trim() };
         await idbSetGithubSpec(state.githubSpec);
       }
-      setTimeout(close, 1000);
+      setTimeout(() => { closeGitMenu(); renderGitMenu(); }, 1200);
     } catch (err) {
       console.error('push failed', err);
       statusEl.dataset.kind = 'err';
       statusEl.textContent = `Chyba: ${err.message}`;
-      okBtn.disabled = false; cancelBtn.disabled = false;
+      publishBtn.disabled = false;
     }
   };
-  okBtn.addEventListener('click', submit);
-  const onEnter = (e) => { if (e.key === 'Enter' && !okBtn.disabled) { e.preventDefault(); submit(); } };
+  publishBtn.addEventListener('click', publish);
+  const onEnter = (e) => { if (e.key === 'Enter' && !publishBtn.disabled) { e.preventDefault(); publish(); } };
   msgIn.addEventListener('keydown', onEnter);
-  tokenIn.addEventListener('keydown', onEnter);
-  setTimeout(() => msgIn.focus(), 0);
+  tokenIn?.addEventListener('keydown', onEnter);
+}
+
+function closeGitMenu() {
+  const wrap = document.querySelector('[data-nav-git]');
+  wrap?.classList.remove('is-open');
+  if (document.activeElement && wrap?.contains(document.activeElement)) document.activeElement.blur();
 }
 
 // --- zdrojové menu v navu ---------------------------------------------------
 
 export function renderSourceMenu() {
+  renderGitMenu();
   const label = document.querySelector('[data-source-label]');
   const menu = document.querySelector('[data-source-menu]');
   const labelText = state.rootHandle ? state.rootHandle.name
@@ -1748,17 +1782,9 @@ export function renderSourceMenu() {
     label: state.githubSpec ? 'Připojit jiný GitHub repo…' : 'Připojit GitHub repo…',
     onClick: showGithubDialog,
   });
-  if (state.githubSpec) {
-    items.push({
-      label: `Větev: ${state.githubSpec.branch || '…'} ▾`,
-      onClick: showBranchPicker,
-    });
-  }
-  if (state.githubSpec) {
-    items.push({ label: 'Pushnout změny…', onClick: showGithubPushDialog });
-  } else if (hasSource) {
+  if (!state.githubSpec && hasSource) {
     items.push({ label: 'Stáhnout jako ZIP', onClick: exportAsZip });
-  } else {
+  } else if (!hasSource) {
     items.push({ label: 'Export…', disabled: true, title: 'Nejprve připojte zdroj' });
   }
   if (hasSource) {
