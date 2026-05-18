@@ -515,6 +515,7 @@ export function nodeClass(n) {
     const depth = (n.path || '').split('/').filter(Boolean).length;
     base = `n--depth-${Math.min(depth, 5)}`;
     if (n.type === 'dir') base += n.hasChildren ? ' n--dir' : ' n--dir n--empty';
+    else if (n.kind === 'link') base += ' n--link';
     else if (n.kind === 'web') base += ' n--web';
     else if (n.kind === 'md') base += ' n--doc';
     else {

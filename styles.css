@@ -132,6 +132,7 @@ button {
 .labels .n--doc { color: var(--c-orange); }
 .labels .n--code { color: var(--c-green); }
 .labels .n--web { color: var(--c-teal); }
+.labels .n--link { color: var(--muted); }
 .labels .n--other { color: var(--muted); }
 .labels .n--empty { color: var(--muted); opacity: 0.55; }
 
@@ -1461,29 +1462,4 @@ button {
   max-width: calc(100vw - 24px);
 }
 .badge[hidden] { display: none; }
-.badge__meta {
-  font-size: 11px;
-  color: var(--muted);
-  text-decoration: none;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background-color 0.1s ease, color 0.1s ease;
-}
-.badge__meta:hover,
-.badge__meta:focus-visible {
-  background: var(--c-yellow);
-  color: #15151a;
-  outline: none;
-}
-.badge__meta-row {
-  display: flex;
-  gap: 4px;
-  align-items: baseline;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-.badge__meta-sep {
-  font-size: 11px;
-  color: var(--muted);
-}
 
