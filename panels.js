@@ -14,7 +14,7 @@ import {
   refreshOpenLabels, renderDirTree,
   addTreeNode, removeTreeNode, rebuildMindmap,
 } from './mindmap.js';
-import { syncFromState } from './url.js';
+import { syncFromState, findNodeByPath } from './url.js';
 
 // --- minimal markdown renderer ----------------------------------------------
 // Podmnožina: nadpisy, odstavce, **bold**, *italic*, `code`, ``` block ```,
@@ -177,6 +177,14 @@ function openByHref(href, sourcePath, mods) {
         || state.byPath.get(path + '/README.md');
   }
   if (!node && !path) node = state.byPath.get('');
+  // path mimo aktuální subtree → hledej v celém stromu (recenter na složku)
+  if (!node && path && state.originalTree) {
+    const raw = findNodeByPath(state.originalTree, path);
+    if (raw && (raw.type === 'dir' || raw.type === 'root')) {
+      recenter(path);
+      return;
+    }
+  }
   if (!node) return;
   // link na složku / root → recentruj mapu místo otevírání prázdného panelu
   if (node.type === 'root' || node.type === 'dir') {
