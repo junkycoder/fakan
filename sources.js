@@ -9,6 +9,7 @@ import {
   LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
+  applyTreeOps,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain } from './panels.js';
@@ -830,7 +831,7 @@ async function loadAndMount(handle, opts = {}) {
     state.rootHandle = handle;
     state.githubSpec = null;
     state.uploadedSnapshot = null;
-    state.originalTree = tree;
+    state.originalTree = applyTreeOps(tree);
     state.currentRootPath = '';
     state.recenterHistory = [];
     hideEmptyState();
@@ -852,7 +853,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     state.rootHandle = null;
     state.githubSpec = null;
     state.uploadedSnapshot = { name: tree.name };
-    state.originalTree = tree;
+    state.originalTree = applyTreeOps(tree);
     state.currentRootPath = '';
     state.recenterHistory = [];
     hideEmptyState();
@@ -873,7 +874,7 @@ async function connectGithub(spec, onStatus) {
   state.rootHandle = null;
   state.githubSpec = spec;
   state.uploadedSnapshot = null;
-  state.originalTree = tree;
+  state.originalTree = applyTreeOps(tree);
   state.currentRootPath = '';
   state.recenterHistory = [];
   hideEmptyState();

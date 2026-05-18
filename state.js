@@ -4,6 +4,7 @@
 // --- konstanty --------------------------------------------------------------
 
 export const LS_EDIT_PREFIX = 'fakan:edit:';
+export const LS_TREE_OPS = 'fakan:tree-ops';
 export const CHAR_W = 8.4;
 export const LINE_H = 18;
 export const ROOT_SCALE = 1.4;
@@ -115,6 +116,9 @@ export const state = {
   rootHandle: null,
   githubSpec: null,
   uploadedSnapshot: null,
+
+  // lokální tree edits (přidané / smazané uzly přes UI)
+  treeOps: [],
 };
 
 // --- čisté util funkce ------------------------------------------------------
@@ -219,4 +223,79 @@ export function loadAllEditOverrides(nodes) {
     const saved = loadEditOverride(n);
     if (saved != null) applyEditToNode(n, saved);
   }
+}
+
+// --- tree ops (lokálně přidané / smazané uzly) ------------------------------
+// Persistentní v localStorage. Aplikuje se na fresh originalTree po načtení
+// zdroje. Smazané uzly nejsou zapsané do zdroje (LS-only overlay) — push do
+// reálného repa je zatím TODO.
+
+export function loadTreeOps() {
+  try {
+    const raw = localStorage.getItem(LS_TREE_OPS);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+export function saveTreeOps(ops) {
+  try {
+    if (!ops || !ops.length) localStorage.removeItem(LS_TREE_OPS);
+    else localStorage.setItem(LS_TREE_OPS, JSON.stringify(ops));
+  } catch {}
+}
+
+export function pushTreeOp(op) {
+  state.treeOps.push(op);
+  saveTreeOps(state.treeOps);
+}
+
+function findDirInTree(tree, path) {
+  if (!path) return tree;
+  const parts = path.split('/');
+  let cur = tree;
+  for (const p of parts) {
+    if (!cur || !Array.isArray(cur.children)) return null;
+    cur = cur.children.find((c) => c.name === p && c.type === 'dir');
+    if (!cur) return null;
+  }
+  return cur;
+}
+
+export function makeNewNode(name, isDir) {
+  if (isDir) return { name, type: 'dir', children: [] };
+  const [stem, ext] = splitExt(name);
+  const isMd = ext === '.md';
+  const isText = isTextFile(name, ext);
+  const node = {
+    name,
+    type: 'file',
+    kind: isMd ? 'md' : (isText ? 'text' : 'other'),
+    filename: name,
+  };
+  if (isMd) { node.title = ''; node.slug = stem; node.content = ''; node.raw = ''; }
+  else if (isText) { node.content = ''; node.raw = ''; }
+  return node;
+}
+
+export function applyTreeOps(tree) {
+  if (!tree) return tree;
+  if (!state.treeOps.length) state.treeOps = loadTreeOps();
+  for (const op of state.treeOps) {
+    if (op.op === 'add') {
+      const parent = findDirInTree(tree, op.parent || '');
+      if (!parent) continue;
+      if (!Array.isArray(parent.children)) parent.children = [];
+      if (parent.children.some((c) => c.name === op.name)) continue;
+      parent.children.push(makeNewNode(op.name, !!op.isDir));
+    } else if (op.op === 'rm') {
+      const parts = (op.path || '').split('/');
+      const name = parts.pop();
+      const parent = findDirInTree(tree, parts.join('/'));
+      if (!parent || !Array.isArray(parent.children)) continue;
+      parent.children = parent.children.filter((c) => c.name !== name);
+    }
+  }
+  return tree;
 }

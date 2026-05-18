@@ -12,6 +12,7 @@ import {
 import {
   recenter, removeFromHistory,
   refreshOpenLabels, renderDirTree,
+  addTreeNode, removeTreeNode, rebuildMindmap,
 } from './mindmap.js';
 import { syncFromState } from './url.js';
 
@@ -35,10 +36,19 @@ function renderMarkdown(md) {
   // 3) inline code (`...`)
   s = s.replace(/`([^`\n]+)`/g, '<code class="md-inline">$1</code>');
 
-  // 4) odkazy [text](url) — povolíme jen http(s), mailto, relativní '/'
+  // 4) odkazy [text](url)
+  //    - externí (http/mailto/tel) → otevřít v nové záložce
+  //    - interní (relativní / root-absolutní bez schématu) → značka pro panel-routing
+  //    - #anchor → necháme být
   s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (_, text, url) => {
-    const safe = /^(https?:|mailto:|\/|#)/i.test(url) ? url : '#';
-    return `<a href="${safe}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    if (/^(https?:|mailto:|tel:)/i.test(url)) {
+      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+    }
+    if (url.startsWith('#')) {
+      return `<a href="${url}">${text}</a>`;
+    }
+    const safe = url.replace(/"/g, '&quot;');
+    return `<a href="${safe}" data-fakan-link="${safe}">${text}</a>`;
   });
 
   // 5) bold + italic
@@ -93,6 +103,104 @@ function defaultPanelMode(node) {
   if ((fn.endsWith('.html') || fn.endsWith('.htm')) && (node.raw || node.path)) return 'rendered';
   if (mediaKind(node)) return 'rendered';
   return 'source';
+}
+
+// --- routing odkazů z obsahu (MD + iframe HTML) -----------------------------
+
+// Injekt do <head> srcdoc iframe:
+//   1) style — srcdoc nemá <base>, takže relativní href="styles.css" se resolvne
+//      vůči parentu a načte fakan-app CSS s `body { overflow: hidden }`.
+//      Tímhle override-em zaručíme, že obsah panelu jde scrollovat.
+//   2) script — odchytí klik na <a> a postMessage parentovi pro panel-routing.
+const IFRAME_HEAD_INJECT = `<style>html,body{height:auto !important;min-height:100% !important;overflow:auto !important}</style><script>
+(function(){
+  document.addEventListener('click', function(e){
+    var a = e.target.closest && e.target.closest('a[href]');
+    if(!a) return;
+    var href = a.getAttribute('href');
+    if(!href || href.charAt(0) === '#') return;
+    if(/^(https?:|mailto:|tel:|javascript:|data:)/i.test(href)) return; // ať otevře browser
+    e.preventDefault();
+    parent.postMessage({
+      type: 'fakan-link',
+      href: href,
+      shift: !!e.shiftKey,
+      meta: !!e.metaKey,
+      ctrl: !!e.ctrlKey,
+    }, '*');
+  }, true);
+})();
+</script>`;
+
+function injectIframeLinkScript(html) {
+  const s = String(html || '');
+  if (/<\/head>/i.test(s)) return s.replace(/<\/head>/i, IFRAME_HEAD_INJECT + '</head>');
+  if (/<head[^>]*>/i.test(s)) return s.replace(/<head[^>]*>/i, (m) => m + IFRAME_HEAD_INJECT);
+  if (/<body[^>]*>/i.test(s)) return s.replace(/<body[^>]*>/i, (m) => m + IFRAME_HEAD_INJECT);
+  if (/<html[^>]*>/i.test(s)) return s.replace(/<html[^>]*>/i, (m) => m + IFRAME_HEAD_INJECT);
+  return IFRAME_HEAD_INJECT + s;
+}
+
+// Resolve relativního / absolutního hrefu vůči path zdrojového uzlu.
+// Vrací cestu vhodnou pro state.byPath (bez leading/trailing slash).
+function resolveLinkPath(sourcePath, href) {
+  let h = String(href || '').replace(/[?#].*$/, '');
+  if (!h) return '';
+  if (h.startsWith('/')) {
+    h = h.replace(/^\/+/, '');
+  } else {
+    const dir = String(sourcePath || '').split('/').slice(0, -1).filter(Boolean);
+    const parts = dir.slice();
+    for (const seg of h.split('/')) {
+      if (seg === '' || seg === '.') continue;
+      if (seg === '..') parts.pop();
+      else parts.push(seg);
+    }
+    h = parts.join('/');
+  }
+  return h.replace(/\/+$/, '');
+}
+
+function openByHref(href, sourcePath, mods) {
+  if (!href) return;
+  if (href.startsWith('#')) return;
+  if (/^(https?:|mailto:|tel:|javascript:|data:)/i.test(href)) {
+    window.open(href, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  const path = resolveLinkPath(sourcePath || '', href);
+  let node = state.byPath.get(path);
+  if (!node && path) {
+    // dir bez koncového slashe, anebo link na složku → zkus rootový index
+    node = state.byPath.get(path + '/index.html')
+        || state.byPath.get(path + '/index.md')
+        || state.byPath.get(path + '/README.md');
+  }
+  if (!node && !path) node = state.byPath.get('');
+  if (!node) return;
+  if (mods && mods.shift) openMainOnly(node);
+  else if (mods && (mods.meta || mods.ctrl)) openAsFollower(node);
+  else openMain(node);
+}
+
+let _msgListenerInstalled = false;
+function installIframeMessageListener() {
+  if (_msgListenerInstalled) return;
+  _msgListenerInstalled = true;
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || d.type !== 'fakan-link') return;
+    // najdi panel, jehož iframe poslal zprávu
+    const panels = allPanels();
+    const panel = panels.find((p) => {
+      const ifr = p.element.querySelector('iframe.iframe-preview');
+      return ifr && ifr.contentWindow === e.source;
+    });
+    if (!panel) return;
+    openByHref(d.href, panel.node.path || '', {
+      shift: !!d.shift, meta: !!d.meta, ctrl: !!d.ctrl,
+    });
+  });
 }
 
 // --- panely (windows) -------------------------------------------------------
@@ -164,7 +272,8 @@ function renderedBody(node) {
     // Pokud máme `raw` (lokální složka / GitHub fetch), renderujeme přes srcdoc.
     // Jinak pro statický deploy iframe stáhne přímo přes path.
     if (node.raw) {
-      const srcdoc = node.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const wrapped = injectIframeLinkScript(node.raw);
+      const srcdoc = wrapped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.filename || node.name)}"></iframe>`;
     }
     if (node.path) {
@@ -176,7 +285,8 @@ function renderedBody(node) {
   const idx = dirIndexHtml(node);
   if (idx) {
     if (idx.raw) {
-      const srcdoc = idx.raw.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      const wrapped = injectIframeLinkScript(idx.raw);
+      const srcdoc = wrapped.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
       return `<iframe class="iframe-preview" srcdoc="${srcdoc}" sandbox="allow-scripts" title="${escapeHtml(node.name + '/index.html')}"></iframe>`;
     }
     if (idx.path) {
@@ -475,7 +585,19 @@ function setupPanelInteractions(panel) {
 
   mountEditorIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
+  installIframeMessageListener();
   closeBtn.addEventListener('click', () => closePanel(panel));
+
+  // odkazy v MD obsahu — interní routing do panelu
+  bodyEl.addEventListener('click', (e) => {
+    const link = e.target.closest('[data-fakan-link]');
+    if (!link) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openByHref(link.dataset.fakanLink, panel.node.path || '', {
+      shift: e.shiftKey, meta: e.metaKey, ctrl: e.ctrlKey,
+    });
+  });
 
   // lazy fetch obsahu (statický deploy) — po doručení re-renderuje body
   if (nodeNeedsLazyContent(panel.node)) {
@@ -484,9 +606,62 @@ function setupPanelInteractions(panel) {
       .catch(() => {});
   }
 
+  // + / − tlačítka v ASCII stromu (přidat / smazat soubor / složku)
+  bodyEl.addEventListener('click', (e) => {
+    const addBtn = e.target.closest('.src-tree .n-add');
+    if (addBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const raw = addBtn.dataset.addParent;
+      const parentPath = raw === '/' ? '' : raw;
+      const input = window.prompt(
+        'Nový soubor / složka (koncové „/" = složka, např. „blog/" nebo „pisen.md"):',
+        ''
+      );
+      if (input == null) return;
+      const newPath = addTreeNode(parentPath, input);
+      if (!newPath) return;
+      rebuildMindmap(panel.node.path || '');
+      const refreshed = state.byPath.get(panel.path === '/' ? '' : panel.path);
+      if (refreshed) panel.node = refreshed;
+      rerenderPanelBody(panel);
+      const created = state.byPath.get(newPath);
+      if (created && created.type === 'file') openMain(created);
+      return;
+    }
+    const rmBtn = e.target.closest('.src-tree .n-rm');
+    if (rmBtn) {
+      e.preventDefault();
+      e.stopPropagation();
+      const raw = rmBtn.dataset.rmPath;
+      const path = raw === '/' ? '' : raw;
+      if (!path) return;
+      const node = state.byPath.get(path);
+      const isDir = node && (node.type === 'dir' || node.type === 'root');
+      const hasChildren = isDir && (state.childrenByPath.get(path) || []).length > 0;
+      const label = node ? node.name : path;
+      const msg = hasChildren
+        ? `Smazat složku „${label}/" včetně obsahu?`
+        : `Smazat „${label}"?`;
+      if (!window.confirm(msg)) return;
+      // zavři případné otevřené panely k tomuto uzlu (a jeho potomkům)
+      for (const p of getAllPanels()) {
+        const pp = p.path === '/' ? '' : p.path;
+        if (pp === path || pp.startsWith(path + '/')) closePanel(p);
+      }
+      if (!removeTreeNode(path)) return;
+      rebuildMindmap(panel.node.path || '');
+      const refreshed = state.byPath.get(panel.path === '/' ? '' : panel.path);
+      if (refreshed) { panel.node = refreshed; rerenderPanelBody(panel); }
+      return;
+    }
+  });
+
   // klikatelné uzly v ASCII stromu (jen u dir-panelu, ale handler je univerzální)
   let pendingTreeSingle = null;
   const handleTreeNode = (e, mode) => {
+    // klik na + / − má prioritu (řeší blok výš), tady ho přeskoč
+    if (e.target.closest('.src-tree .n-add, .src-tree .n-rm')) return;
     const span = e.target.closest('.src-tree .n');
     if (!span) return;
     const raw = span.dataset.path;

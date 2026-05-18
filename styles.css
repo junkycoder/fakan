@@ -509,6 +509,35 @@ button {
 .src-tree .n--other  { color: var(--muted); }
 .src-tree .n--empty  { color: var(--muted); opacity: 0.55; }
 
+/* + a − tlačítka u uzlu — vyplouvají z toku (position:absolute), aby nešifovaly
+   monospace grid. + je vidět jen na hoveru řádku, − červené až na hover. */
+.src-tree .n { position: relative; }
+.src-tree .n-add,
+.src-tree .n-rm {
+  position: absolute;
+  top: 0;
+  font: inherit;
+  line-height: 18px;
+  height: 18px;
+  min-width: 12px;
+  padding: 0 3px;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s, color 0.12s;
+}
+.src-tree .n-add { left: 100%; color: var(--muted); }
+.src-tree .n-rm  { left: calc(100% + 14px); color: var(--c-red, #d33); }
+.src-tree .n:hover .n-add,
+.src-tree .n:hover .n-rm,
+.src-tree .n:focus-within .n-add,
+.src-tree .n:focus-within .n-rm { opacity: 1; }
+.src-tree .n-add:hover { color: var(--fg); background: color-mix(in oklab, var(--c-green) 25%, transparent); }
+.src-tree .n-rm:hover  { background: color-mix(in oklab, var(--c-red, #d33) 25%, transparent); }
+
 .panel__note {
   margin: 0;
   padding: 12px;

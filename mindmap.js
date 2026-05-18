@@ -5,6 +5,7 @@ import {
   state,
   CHAR_W, LINE_H, ROOT_SCALE, DIR_QUADRANT,
   escapeHtml, cssEscapePath, loadAllEditOverrides,
+  pushTreeOp, makeNewNode, LS_EDIT_PREFIX,
 } from './state.js';
 import { syncFromState, computeUrl } from './url.js';
 
@@ -827,7 +828,17 @@ export function renderTreeInlineHTML(grid) {
     for (const n of arr) {
       out += escapeHtml(line.slice(cursor, n.localCol).join(''));
       const dp = n.path == null ? '/' : (n.path || '/');
-      out += `<span class="n ${nodeClass(n)}" data-path="${escapeHtml(dp)}" data-type="${escapeHtml(n.type)}" role="button" tabindex="0">${escapeHtml(n.name)}</span>`;
+      const isDir = n.type === 'dir' || n.type === 'root';
+      // root dir-panelu nesmaž (mažeš jeho ze stromu nadřazeným panelem);
+      // jinak povolíme `-`. `+` na všech dir/root.
+      const isPanelRoot = n.type === 'root' || dp === '/';
+      const addBtn = isDir
+        ? `<button class="n-add" type="button" data-add-parent="${escapeHtml(dp)}" tabindex="-1" aria-label="Přidat do ${escapeHtml(n.name)}">+</button>`
+        : '';
+      const rmBtn = !isPanelRoot
+        ? `<button class="n-rm" type="button" data-rm-path="${escapeHtml(dp)}" data-rm-type="${escapeHtml(n.type)}" tabindex="-1" aria-label="Smazat ${escapeHtml(n.name)}">−</button>`
+        : '';
+      out += `<span class="n ${nodeClass(n)}" data-path="${escapeHtml(dp)}" data-type="${escapeHtml(n.type)}" role="button" tabindex="0">${escapeHtml(n.name)}${addBtn}${rmBtn}</span>`;
       cursor = n.localCol + n.name.length;
     }
     out += escapeHtml(line.slice(cursor).join(''));
@@ -841,4 +852,42 @@ export function renderDirTree(dirNode) {
   if (!sub) return '<p class="panel__note empty">Strom nenalezen.</p>';
   const grid = buildMindmap(sub, dirNode.path);
   return `<pre class="src-tree">${renderTreeInlineHTML(grid)}</pre>`;
+}
+
+// --- add / remove uzlu v originalTree --------------------------------------
+// Mutuje originalTree, zaloguje op do LS, rebuilduje mindmapu. Funguje na
+// libovolný zdroj (local, snapshot, github) — overlay je čistě klient-side.
+
+export function addTreeNode(parentPath, rawName) {
+  if (!state.originalTree) return null;
+  let name = String(rawName || '').trim();
+  if (!name) return null;
+  // koncový `/` znamená dir; jinak file. Sanitace názvu — bez slashů uvnitř.
+  let isDir = false;
+  if (name.endsWith('/')) { isDir = true; name = name.slice(0, -1).trim(); }
+  if (!name || name.includes('/') || name === '.' || name === '..') return null;
+
+  const parent = findSubtree(state.originalTree, parentPath || '');
+  if (!parent) return null;
+  if (!Array.isArray(parent.children)) parent.children = [];
+  if (parent.children.some((c) => c.name === name)) return null;
+
+  parent.children.push(makeNewNode(name, isDir));
+  pushTreeOp({ op: 'add', parent: parentPath || '', name, isDir });
+  return (parentPath ? `${parentPath}/${name}` : name);
+}
+
+export function removeTreeNode(path) {
+  if (!state.originalTree || !path) return false;
+  const parts = path.split('/');
+  const name = parts.pop();
+  const parent = findSubtree(state.originalTree, parts.join('/'));
+  if (!parent || !Array.isArray(parent.children)) return false;
+  const before = parent.children.length;
+  parent.children = parent.children.filter((c) => c.name !== name);
+  if (parent.children.length === before) return false;
+  pushTreeOp({ op: 'rm', path });
+  // edit overlay pro smazaný soubor už nemá smysl
+  try { localStorage.removeItem(LS_EDIT_PREFIX + path); } catch {}
+  return true;
 }
