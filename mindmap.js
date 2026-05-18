@@ -6,7 +6,9 @@ import {
   CHAR_W, LINE_H, ROOT_SCALE, DIR_QUADRANT,
   escapeHtml, cssEscapePath, loadAllEditOverrides,
 } from './state.js';
-import { syncFromState } from './url.js';
+import { syncFromState, computeUrl } from './url.js';
+
+const RECENTER_HIST_KEY = 'fakan.recenterHistory';
 
 // --- char grid (Map<"r|c", {n,s,e,w}>) + nodes -------------------------------
 
@@ -724,8 +726,9 @@ export function rebuildMindmap(focusPath) {
   }
 }
 
-// recenter — třetí parametr { silent } přeskočí URL sync (init z URL si volá
-// recenter sám, URL už je nastavena).
+// recenter — { silent: true } přeskočí navigaci (init z URL si volá recenter
+// sám, URL už je nastavena). User akce dělá klasický full-page redirect, takže
+// Cmd+šipka zpět funguje nativně. recenterHistory přežívá reload přes sessionStorage.
 export function recenter(path, { silent = false } = {}) {
   const next = path || '';
   if (next === state.currentRootPath) return;
@@ -737,10 +740,28 @@ export function recenter(path, { silent = false } = {}) {
   }
   // nový root nesmí být zároveň v historii
   state.recenterHistory = state.recenterHistory.filter((p) => p !== next);
+
+  if (!silent) {
+    try { sessionStorage.setItem(RECENTER_HIST_KEY, JSON.stringify(state.recenterHistory)); } catch {}
+    window.location.assign(computeUrl(next, ''));
+    return;
+  }
+
   state.currentRootPath = next;
   rebuildMindmap();
   if (state.routeNavListener) state.routeNavListener();
-  if (!silent) syncFromState();
+}
+
+// Volá se v bootu — obnoví historii z předchozí navigace ve stejném tabu.
+export function restoreRecenterHistory() {
+  try {
+    const raw = sessionStorage.getItem(RECENTER_HIST_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      state.recenterHistory = parsed.filter((p) => typeof p === 'string');
+    }
+  } catch {}
 }
 
 export function removeFromHistory(path) {

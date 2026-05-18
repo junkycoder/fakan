@@ -1,7 +1,7 @@
 // Boot orchestrace — DOMContentLoaded sekvence.
 
 import { state } from './state.js';
-import { setupViewport, focusNode, recenter } from './mindmap.js';
+import { setupViewport, focusNode, recenter, restoreRecenterHistory } from './mindmap.js';
 import {
   renderNav, openMain, openMainOnly, openAsFollower, closePanel,
 } from './panels.js';
@@ -73,6 +73,7 @@ export async function boot() {
     if (await tryRestoreSnapshot()) return;
     await tryLoadDefaultSource();
   })();
+  restoreRecenterHistory();
   initFromUrl();
   window.addEventListener('popstate', initFromUrl);
 }
