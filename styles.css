@@ -200,44 +200,6 @@ button {
 /* fokus / aktivní stav řešen barvou + tučným písmem na .n--focus uvnitř .map */
 .hit--active, .hit--focus { background: transparent; outline: none; }
 
-/* --- drag & drop reordering --------------------------------------------- */
-
-.dnd-ghost {
-  position: fixed;
-  top: 0;
-  left: 0;
-  z-index: 9999;
-  pointer-events: none;
-  font-family: var(--mono);
-  font-size: var(--font-size, 14px);
-  line-height: var(--line-h);
-  height: var(--line-h);
-  padding: 0 2px;
-  background: color-mix(in oklab, var(--c-yellow) 38%, transparent);
-  color: var(--fg);
-  border-radius: 3px;
-  white-space: nowrap;
-  transform-origin: left center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
-}
-
-.dnd-drop-indicator {
-  position: fixed;
-  height: 2px;
-  background: var(--c-blue);
-  z-index: 9998;
-  pointer-events: none;
-  border-radius: 2px;
-  transition: opacity 80ms linear;
-  box-shadow: 0 0 4px color-mix(in oklab, var(--c-blue) 60%, transparent);
-}
-
-body.is-dragging-node { cursor: grabbing; }
-body.is-dragging-node .hit { cursor: grabbing; }
-body.is-dragging-node .hit:hover {
-  background: color-mix(in oklab, var(--c-blue) 18%, transparent);
-}
-
 /* --- spodní navigace ----------------------------------------------------- */
 
 .nav {
