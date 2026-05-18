@@ -7,6 +7,7 @@ import {
   maybeOpenDefaultIndex,
 } from './panels.js';
 import { setupKeyboard } from './keyboard.js';
+import { setupDragDrop } from './dnd.js';
 import {
   setupDropZone, renderSourceMenu, mountBadge, renderEmptyHint, showEmptyState,
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadDefaultSource,
@@ -67,6 +68,7 @@ export async function boot() {
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
 
+  setupDragDrop();
   setupDropZone();
   renderSourceMenu();
   mountBadge();

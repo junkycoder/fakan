@@ -339,6 +339,18 @@ export function applyTreeOps(tree) {
       const parent = findDirInTree(tree, parts.join('/'));
       if (!parent || !Array.isArray(parent.children)) continue;
       parent.children = parent.children.filter((c) => c.name !== name);
+    } else if (op.op === 'order') {
+      const parent = findDirInTree(tree, op.parent || '');
+      if (!parent || !Array.isArray(parent.children)) continue;
+      const byName = new Map(parent.children.map((c) => [c.name, c]));
+      const ordered = [];
+      for (const name of (op.order || [])) {
+        const c = byName.get(name);
+        if (c) { ordered.push(c); byName.delete(name); }
+      }
+      // zbylé (mezitím přidané jiným op) na konec, zachovají původní pořadí
+      for (const c of parent.children) if (byName.has(c.name)) ordered.push(c);
+      parent.children = ordered;
     }
   }
   return tree;
