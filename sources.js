@@ -2091,6 +2091,7 @@ function showHelpDialog() {
           <li><b>Portfolio bez CMS.</b> Strom souborů v GitHub repu = veřejný web. Žádný build, žádný editor.</li>
           <li><b>Procházení cizích repů.</b> Vložte <code>github:owner/repo</code> a koukněte se na strom v mapě místo v ascii <code>tree</code>.</li>
           <li><b>Lokální browsing.</b> Připojte složku přes File System handle a používejte fakana jako čtečku/navigátor přes vlastní disk.</li>
+          <li><b>Bez sledování.</b> Žádná data o vás neshromažďujeme ani neměříme. Žádné analytics, žádné cookies, žádné logy o chování — co děláte v mapě, zůstává u vás.</li>
         </ul>
 
         <h3>Základní ovládání</h3>
