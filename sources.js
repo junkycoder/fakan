@@ -1765,6 +1765,7 @@ function renderGitMenu() {
         <a class="nav__git-token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">kde ho vzít?</a>
       </div>
       <input class="nav__git-token" type="password" data-git-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
+      <div class="nav__git-token-warn">Uloží se nezašifrovaně do prohlížeče (IndexedDB). Na sdíleném počítači použijte token jen jednorázově (smažte přes „Odpojit").</div>
     </div>
   `;
 

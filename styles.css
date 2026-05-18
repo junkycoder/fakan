@@ -1114,6 +1114,13 @@ button {
   font-size: 10px;
 }
 .nav__git-token-help:hover { color: var(--c-yellow); }
+.nav__git-token-warn {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+  opacity: 0.85;
+}
 
 .nav__git-status {
   min-height: 14px;
