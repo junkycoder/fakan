@@ -40,20 +40,19 @@ export async function boot() {
     const node = state.byPath.get(path === '/' ? '' : path);
     if (!node) return;
     focusNode(node);
-    // adresář (i root) = recenter, ne otevírání okna se stromem
-    if (node.type === 'dir' || node.type === 'root') {
+    const isDir = node.type === 'dir' || node.type === 'root';
+    // dblclick: složka = recenter (otevři), soubor = openMain (nové okno)
+    if (mode === 'new') {
       if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
-      recenter(node.path || '');
+      if (isDir) recenter(node.path || '');
+      else openMain(node);
       return;
     }
     if (e.shiftKey) { openMainOnly(node); return; }
     // Cmd/Ctrl+klik = follower preview (totéž okno jako Space)
     if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
-    if (mode === 'new') {
-      if (pendingSingle) { clearTimeout(pendingSingle); pendingSingle = null; }
-      openMain(node);
-      return;
-    }
+    // plain single click (i na složku) = follower preview, odložený o 220 ms
+    // kvůli dblclicku — ten recenter musí stihnout zrušit timeout výš.
     if (pendingSingle) clearTimeout(pendingSingle);
     pendingSingle = setTimeout(() => { pendingSingle = null; openAsFollower(node); }, 220);
   };

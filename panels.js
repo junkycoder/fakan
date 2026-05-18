@@ -684,19 +684,17 @@ function setupPanelInteractions(panel) {
     if (!node) return;
     e.preventDefault();
     e.stopPropagation();
-    // adresář (i root) = recenter, panel se stromem nech, ať si user zavře sám
-    if (node.type === 'dir' || node.type === 'root') {
+    const isDir = node.type === 'dir' || node.type === 'root';
+    // dblclick: složka = recenter (otevři), soubor = openMain (nové okno)
+    if (mode === 'new') {
       if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
-      recenter(node.path || '');
+      if (isDir) recenter(node.path || '');
+      else openMain(node);
       return;
     }
     if (e.shiftKey) { openMainOnly(node); return; }
     if (e.metaKey || e.ctrlKey) { openAsFollower(node); return; }
-    if (mode === 'new') {
-      if (pendingTreeSingle) { clearTimeout(pendingTreeSingle); pendingTreeSingle = null; }
-      openMain(node);
-      return;
-    }
+    // plain single click (soubor i složka) = follower preview, s 220ms timeoutem
     if (pendingTreeSingle) clearTimeout(pendingTreeSingle);
     pendingTreeSingle = setTimeout(() => { pendingTreeSingle = null; openAsFollower(node); }, 220);
   };
