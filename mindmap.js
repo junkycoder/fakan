@@ -113,7 +113,9 @@ export function revealMore(targetPath) {
   const key = targetPath || '';
   const cur = state.expandedMore.get(key) || 0;
   state.expandedMore.set(key, cur + TRUNCATE_KEEP);
-  rebuildMindmap(state.focusedPath);
+  // keepViewport: layout mindmapy se zvětší (přibyly řádky), ale nesmíme
+  // uživateli skočit viewportem — má vidět nové položky, ne změnu pozice.
+  rebuildMindmap(state.focusedPath, { keepViewport: true });
   return true;
 }
 
@@ -778,7 +780,7 @@ export function findSubtree(tree, path) {
   return cur;
 }
 
-export function rebuildMindmap(focusPath) {
+export function rebuildMindmap(focusPath, { keepViewport = false } = {}) {
   if (!state.originalTree) return;
   const sub = findSubtree(state.originalTree, state.currentRootPath);
   if (!sub) return;
@@ -797,7 +799,7 @@ export function rebuildMindmap(focusPath) {
     : rootNode;
   if (target) focusNode(target);
   refreshOpenLabels();
-  if (state.viewportApi) {
+  if (state.viewportApi && !keepViewport) {
     requestAnimationFrame(state.viewportApi.center);
   }
 }
