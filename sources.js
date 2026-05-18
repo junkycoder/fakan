@@ -1062,7 +1062,7 @@ function showGithubDialog() {
       <div class="gh-dialog__field gh-dialog__field--combo">
         <span>Repo</span>
         <div class="gh-combo" data-gh-combo>
-          <input type="text" data-gh-repo placeholder="owner/repo, URL nebo vyberte ze seznamu" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <input type="text" data-gh-repo placeholder="jméno repa, owner/repo, URL nebo ze seznamu" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
           <div class="gh-combo__list" data-gh-list hidden></div>
         </div>
       </div>
@@ -1098,6 +1098,7 @@ function showGithubDialog() {
   let myReposLoading = false;
   let myReposError = null;
   let activeToken = null;   // token, kterým byly načtené myRepos
+  let myLogin = null;       // login z /user pro aktuální token
   let currentItems = [];    // momentálně vykreslené (vč. headers)
   let highlightIdx = -1;
 
@@ -1142,6 +1143,7 @@ function showGithubDialog() {
         if (data.length < 100) break;
       }
       myRepos = repos;
+      loadMyLogin(tk);
     } catch (err) {
       myReposError = err.message;
       myRepos = [];
@@ -1149,6 +1151,18 @@ function showGithubDialog() {
       myReposLoading = false;
       renderList();
     }
+  };
+
+  const loadMyLogin = async (tk) => {
+    if (!tk || myLogin) return;
+    try {
+      const r = await fetch('https://api.github.com/user', {
+        headers: { Accept: 'application/vnd.github+json', Authorization: `Bearer ${tk}` },
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d?.login) myLogin = d.login;
+    } catch {}
   };
 
   const renderList = () => {
@@ -1288,15 +1302,20 @@ function showGithubDialog() {
   tokenIn.addEventListener('input', () => {
     const v = tokenIn.value.trim();
     if (v && v !== activeToken) {
-      myRepos = null; myReposError = null; activeToken = null;
+      myRepos = null; myReposError = null; activeToken = null; myLogin = null;
       if (document.activeElement === repoIn) renderList();
     }
   });
 
   const submit = async () => {
-    const parsed = parseRepoInput(repoIn.value);
+    const raw = repoIn.value.trim();
+    let parsed = parseRepoInput(raw);
+    if (!parsed && /^[\w.-]+$/.test(raw)) {
+      const ownerGuess = myLogin || recentEntries[0]?.owner || null;
+      if (ownerGuess) parsed = { owner: ownerGuess, repo: raw, branch: '' };
+    }
     if (!parsed) {
-      statusEl.textContent = 'Zadejte owner/repo nebo URL, nebo vyberte ze seznamu.';
+      statusEl.textContent = 'Zadejte jméno repa, owner/repo nebo URL.';
       statusEl.dataset.kind = 'err';
       repoIn.focus();
       return;
