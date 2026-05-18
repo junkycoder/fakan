@@ -27,6 +27,8 @@ function detectLang(filename) {
   if (fn.endsWith('.js') || fn.endsWith('.mjs') || fn.endsWith('.cjs') || fn.endsWith('.ts') || fn.endsWith('.tsx') || fn.endsWith('.jsx')) return 'js';
   if (fn.endsWith('.css') || fn.endsWith('.scss') || fn.endsWith('.sass') || fn.endsWith('.less')) return 'css';
   if (fn.endsWith('.html') || fn.endsWith('.htm') || fn.endsWith('.svg') || fn.endsWith('.xml')) return 'html';
+  // iOS / Apple XML formáty — všechny jsou XML, tokenizer 'html' je obslouží
+  if (fn.endsWith('.plist') || fn.endsWith('.storyboard') || fn.endsWith('.xib') || fn.endsWith('.entitlements') || fn.endsWith('.xcprivacy') || fn.endsWith('.xcsettings') || fn.endsWith('.xcscheme')) return 'html';
   // web templaty / SFC — HTML s embedded jiným jazykem; bližší aproximace než plain
   if (fn.endsWith('.erb') || fn.endsWith('.ejs') || fn.endsWith('.hbs') || fn.endsWith('.handlebars') || fn.endsWith('.mustache') || fn.endsWith('.njk') || fn.endsWith('.jinja') || fn.endsWith('.jinja2') || fn.endsWith('.twig') || fn.endsWith('.liquid')) return 'html';
   if (fn.endsWith('.vue') || fn.endsWith('.svelte') || fn.endsWith('.astro')) return 'html';
@@ -36,12 +38,16 @@ function detectLang(filename) {
   if (fn.endsWith('.yml') || fn.endsWith('.yaml')) return 'yaml';
   if (fn.endsWith('.toml')) return 'toml';
   if (fn.endsWith('.rb') || fn.endsWith('.rake') || fn === 'gemfile' || fn === 'rakefile' || fn.endsWith('.gemspec')) return 'ruby';
+  // Cocoapods / Fastlane Ruby DSL soubory bez přípony
+  if (fn === 'podfile' || fn === 'podfile.lock' || fn === 'fastfile' || fn === 'appfile' || fn === 'matchfile' || fn === 'deliverfile' || fn === 'scanfile') return 'ruby';
   if (fn.endsWith('.haml') || fn.endsWith('.slim')) return 'ruby'; // ruby template engines
   if (fn.endsWith('.go')) return 'go';
   if (fn.endsWith('.rs')) return 'rust';
   if (fn.endsWith('.java') || fn.endsWith('.kt') || fn.endsWith('.kts')) return 'java';
   if (fn.endsWith('.scala') || fn.endsWith('.sc') || fn.endsWith('.groovy') || fn.endsWith('.gradle')) return 'java'; // JVM aproximace
   if (fn.endsWith('.c') || fn.endsWith('.h') || fn.endsWith('.cpp') || fn.endsWith('.hpp') || fn.endsWith('.cc') || fn.endsWith('.cxx') || fn.endsWith('.m') || fn.endsWith('.mm')) return 'c';
+  // Xcode / Cocoa textové formáty s C-like komentáři, {} a "string"; sémantika
+  if (fn.endsWith('.pbxproj') || fn.endsWith('.xcconfig') || fn.endsWith('.strings') || fn.endsWith('.stringsdict') || fn.endsWith('.modulemap')) return 'c';
   if (fn.endsWith('.php') || fn.endsWith('.phtml')) return 'php';
   if (fn.endsWith('.lua')) return 'lua';
   if (fn.endsWith('.sql')) return 'sql';
