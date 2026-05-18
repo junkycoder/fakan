@@ -8,9 +8,9 @@ test.describe('Badge meta', () => {
     await bootApp(page);
   });
 
-  test('obsahuje všechny meta odkazy ve správném pořadí', async ({ page }) => {
+  test('obsahuje meta odkazy ve správném pořadí', async ({ page }) => {
     const labels = await page.locator(`${SEL.badge} a`).allTextContents();
-    expect(labels).toEqual(['přispět', 'odebírat', 'github', 'email', 'podmínky', 'licence']);
+    expect(labels).toEqual(['help', 'přispět', 'github', 'kontakt']);
   });
 
   test('github link vede na junkycoder/fakan a otevírá se v novém tabu', async ({ page }) => {
@@ -21,20 +21,16 @@ test.describe('Badge meta', () => {
     await expect(gh).toHaveAttribute('rel', /noopener/);
   });
 
-  test('email link je mailto: na hromada.dan@gmail.com', async ({ page }) => {
-    const mail = page.locator(`${SEL.badge} a`, { hasText: 'email' });
+  test('kontakt je mailto: na hromada.dan@gmail.com', async ({ page }) => {
+    const mail = page.locator(`${SEL.badge} a`, { hasText: 'kontakt' });
     await expect(mail).toBeVisible();
     await expect(mail).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com/);
   });
 
-  test('odebírat je mailto: s předmětem Odebírat', async ({ page }) => {
-    const sub = page.locator(`${SEL.badge} a`, { hasText: 'odebírat' });
-    await expect(sub).toBeVisible();
-    await expect(sub).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com.*Odeb/i);
-  });
-
-  test('licence vede na AGPL-3.0', async ({ page }) => {
-    const lic = page.locator(`${SEL.badge} a`, { hasText: 'licence' });
-    await expect(lic).toHaveAttribute('href', /gnu\.org\/licenses\/agpl-3\.0/);
+  test('help a přispět otevírají interní dialog (href="#")', async ({ page }) => {
+    const help = page.locator(`${SEL.badge} a`, { hasText: 'help' });
+    const tip = page.locator(`${SEL.badge} a`, { hasText: 'přispět' });
+    await expect(help).toHaveAttribute('href', '#');
+    await expect(tip).toHaveAttribute('href', '#');
   });
 });

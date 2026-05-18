@@ -7,10 +7,16 @@ import {
   escapeHtml, cssEscapePath, loadAllEditOverrides,
   pushTreeOp, makeNewNode, LS_EDIT_PREFIX,
 } from './state.js';
-import { syncFromState, computeUrl } from './url.js';
+import { syncFromState } from './url.js';
 
 const RECENTER_HIST_KEY = 'fakan.recenterHistory';
 const RECENTER_FWD_KEY = 'fakan.recenterForward';
+
+// Top-level uzel s nejméně tolika dětmi se rozkošatí do sub-stran (W+S+E).
+// Pod prahem zůstává lineární, aby sourozenci v jednom kvadrantu na sebe nenarazili.
+const BRANCH_THRESHOLD = 6;
+// Kolik buněk maximálně posunout sub-body při hledání volného místa, než to vzdáme.
+const MAX_PLACEMENT_TRIES = 30;
 
 function persistRecenterStacks() {
   try {
@@ -174,6 +180,12 @@ function layoutBody(children, pathPrefix = '', sepTop = 1, branchify = false) {
         // uvnitř stejného kvadrantu na sebe nenarážely.
         if (branchify && depth === 0 && child.type === 'dir' && kids.length >= 6) {
           const sub = layoutSubBranches(kids === child.children ? child : { ...child, children: kids }, path);
+      if (child.children && child.children.length) {
+        // 2. úroveň — rozkošatění top-level uzlů s dost dětmi do W+S+E sub-stran.
+        // Spočítáme sub-grid a vložíme ho s anchor (0,0) = první znak jména uzlu.
+        if (branchify && depth === 0 && child.type === 'dir' && child.children.length >= BRANCH_THRESHOLD) {
+          const sub = layoutSubBranches(child, path);
+
           composeBody(g, sub, row, cc + 4);
           const sb = bbox(sub);
           // Posun cursoru pod nejnižší řadu sub-strany (S forward jde dolů).
@@ -241,11 +253,11 @@ function bodyCollides(occ, body, dRow, dCol) {
 }
 
 // Posune `body` od `(baseRow, baseCol)` ve směru `axis` dokud nepřestane kolidovat
-// s obsazenými buňkami v `dst`. Max 30 iterací (poté vrátí poslední pokus).
+// s obsazenými buňkami v `dst`. Po MAX_PLACEMENT_TRIES iteracích vrátí poslední pokus.
 function placeWithoutCollision(dst, body, baseRow, baseCol, axis) {
   const occ = occupiedCells(dst);
   let dRow = baseRow, dCol = baseCol;
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < MAX_PLACEMENT_TRIES; i++) {
     if (!bodyCollides(occ, body, dRow, dCol)) return { dRow, dCol };
     if (axis === 'row-down') dRow++;
     else if (axis === 'col-right') dCol++;
@@ -783,9 +795,10 @@ export function rebuildMindmap(focusPath) {
   }
 }
 
-// recenter — { silent: true } přeskočí navigaci (init z URL si volá recenter
-// sám, URL už je nastavena). User akce dělá klasický full-page redirect, takže
-// Cmd+šipka zpět funguje nativně. recenterHistory přežívá reload přes sessionStorage.
+// recenter — { silent: true } přeskočí pushState (init z URL / popstate si URL
+// už řídí sám). User akce dělá SPA in-place update: změní strom, pushne URL,
+// otevřené panely zachová. Cmd+šipka zpět funguje přes nativní popstate.
+// recenterHistory přežívá reload přes sessionStorage.
 // mode: 'forward' (normal Enter/klik) zahodí forward stack; 'back' (Cmd+←) /
 // 'redo' (Cmd+→) ho zachová — volající si ho upraví sám.
 export function recenter(path, { silent = false, mode = 'forward' } = {}) {
@@ -801,15 +814,14 @@ export function recenter(path, { silent = false, mode = 'forward' } = {}) {
   state.recenterHistory = state.recenterHistory.filter((p) => p !== next);
   if (mode === 'forward') state.recenterForward = [];
 
-  if (!silent) {
-    persistRecenterStacks();
-    window.location.assign(computeUrl(next, ''));
-    return;
-  }
-
   state.currentRootPath = next;
   rebuildMindmap();
   if (state.routeNavListener) state.routeNavListener();
+
+  if (!silent) {
+    persistRecenterStacks();
+    syncFromState();
+  }
 }
 
 // Cmd+← — skok na rodičovskou cestu, současný root se uloží do forward stacku,
