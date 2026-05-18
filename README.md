@@ -83,42 +83,44 @@ Vzniká pro mě, abych měl jedno plátno, kde se schází profil, texty, projek
 
 ## Roadmapa
 
+Stav: `[hotovo]` = funguje, `[rozpracováno]` = částečně, `[plánováno]` = ještě ne.
+
 ### Krátkodobě (další iterace)
 
-**Editace přímo v UI.** Tlačítka `+` u složek (nový soubor / podsložka) a `Shift + -` (smazat). Syntax: `název` = soubor, `název/` = složka. Vyžaduje lokální server (Python s POST/PUT/DELETE) nebo backendový endpoint.
+**[hotovo] Editace přímo v UI.** Tlačítka `+` u složek (nový soubor / podsložka) a `Shift + -` (smazat). Syntax: `název` = soubor, `název/` = složka. Push do GitHubu přes Git menu v navbaru.
 
-**Command palette (`Cmd+K`).** Fuzzy search napříč všemi uzly a akcemi: otevřít, smazat, přejmenovat, sdílet, generovat. Hlavní brána ovládání pro klávesnicové uživatele.
+**[plánováno] Command palette (`Cmd+K`).** Fuzzy search napříč všemi uzly a akcemi: otevřít, smazat, přejmenovat, sdílet, generovat. Hlavní brána ovládání pro klávesnicové uživatele.
 
-**Vim mode v editoru.** Když je list otevřený a uživatel přepne na edit (`i` nebo `Enter`), ovládání jako ve vim (módy, `hjkl`, `dd`, `yy`, `:w`, …). Pravděpodobně CodeMirror 6 s vim pluginem, nebo vlastní lehčí implementace nad `textarea`.
+**[hotovo] Vim mode v editoru.** Když je list otevřený a uživatel přepne na edit (`i` nebo `Enter`), ovládání jako ve vim (módy, `hjkl`, `dd`, `yy`, `:w`, …). Vlastní lehká implementace v `editor.js`, bez závislostí.
 
-**AI volání z uzlu (`Cmd+I`).** Pošle obsah uzlu (nebo selekci) přes Anthropic / OpenAI API. Odpověď se vloží jako nový uzel nebo do current dokumentu. Klíč v `localStorage`, nikde se neposílá.
+**[plánováno] AI volání z uzlu (`Cmd+I`).** Pošle obsah uzlu (nebo selekci) přes Anthropic / OpenAI API. Odpověď se vloží jako nový uzel nebo do current dokumentu. Klíč v `localStorage`, nikde se neposílá.
 
-**Snap-grid pro custom layout.** Uzly půjde tahat z dnešní auto-pozice. Při puštění se přichytí k charakter-gridu (`CHAR_W × LINE_H`), takže se pěkně chytají vedle sebe. Pozice se uloží ve frontmatteru uzlu (`x: 12, y: -4`).
+**[plánováno] Snap-grid pro custom layout.** Uzly půjde tahat z dnešní auto-pozice. Při puštění se přichytí k charakter-gridu (`CHAR_W × LINE_H`), takže se pěkně chytají vedle sebe. Pozice se uloží ve frontmatteru uzlu (`x: 12, y: -4`).
 
 ### Středně (kvartál)
 
-**Stavy větví.** `access: public | shared | locked | paid` ve frontmatteru. Vizuální indikátory v mindmapě (`●`, `→`, `🔒`, `€`). Před zobrazením se ověří přístup; pokud chybí, panel zobrazí gate (paywall nebo password input).
+**[plánováno] Stavy větví.** `access: public | shared | locked | paid` ve frontmatteru. Vizuální indikátory v mindmapě (`●`, `→`, `🔒`, `€`). Před zobrazením se ověří přístup; pokud chybí, panel zobrazí gate (paywall nebo password input).
 
-**Backend (Cloudflare Worker).** Jeden Worker pro:
+**[rozpracováno] Backend (Cloudflare Worker).** Statika + SPA fallback hotové. Endpoints zatím chybí:
 - `POST /share` → vygeneruje krátký URL slug + share-link
 - `POST /unlock` → ověří heslo, vystaví JWT v cookie
 - `POST /pay` → Stripe Payment Intent (CZK), po úhradě vystaví access JWT
-- `PUT /file/{path}`, `DELETE /file/{path}` → commit do GitHubu přes GitHub API
+- `PUT /file/{path}`, `DELETE /file/{path}` → commit do GitHubu přes GitHub API (zatím přes klientský push z UI)
 - `GET /webhook/github` → re-deploy při push
 
-**GitHub integrace složek.** Konkrétní složka v mindmapě je napojená na git repo (`gh-mount: org/repo` ve frontmatteru kořene složky). Změny v UI commitují přímo do repa. Pull jednou za N minut nebo na webhook.
+**[plánováno] GitHub integrace složek.** Konkrétní složka v mindmapě je napojená na git repo (`gh-mount: org/repo` ve frontmatteru kořene složky). Změny v UI commitují přímo do repa. Pull jednou za N minut nebo na webhook.
 
-**Custom doména.** Vlastní `*.cz` → Cloudflare Pages / vlastní Worker. Setup formulářem v UI; nameservery / CNAME se nastavují automaticky tam, kde to jde. Pro doménu se postaráme i o registraci.
+**[plánováno] Custom doména.** Vlastní `*.cz` → Cloudflare Pages / vlastní Worker. Setup formulářem v UI; nameservery / CNAME se nastavují automaticky tam, kde to jde. Pro doménu se postaráme i o registraci.
 
 ### Dlouhodobě (rok)
 
-**Multi-tenancy.** Každý uživatel = vlastní fakan instance. Mindmapa nad jeho vlastními soubory, vlastní platby do jeho Stripe účtu (Stripe Connect). Naše instance je jen šablona.
+**[plánováno] Multi-tenancy.** Každý uživatel = vlastní fakan instance. Mindmapa nad jeho vlastními soubory, vlastní platby do jeho Stripe účtu (Stripe Connect). Naše instance je jen šablona.
 
-**Spojení sídel.** Jeden uzel může referencovat uzel druhého uživatele / webu. Cross-link autorizovaný handshakem (oba účty potvrdí). Z mindmapy se tak stává federovaný graf.
+**[plánováno] Spojení sídel.** Jeden uzel může referencovat uzel druhého uživatele / webu. Cross-link autorizovaný handshakem (oba účty potvrdí). Z mindmapy se tak stává federovaný graf.
 
-**Plugins.** Third-party rozšíření: „kanban view nad složkou", „kalendář nad deníkem", „prezentace ze stromu". Plugin = JS modul s definovanou API; instaluje se přes URL.
+**[plánováno] Plugins.** Third-party rozšíření: „kanban view nad složkou", „kalendář nad deníkem", „prezentace ze stromu". Plugin = JS modul s definovanou API; instaluje se přes URL.
 
-**Šablony.** Hotové stromy pro typy uživatelů (designer, kouč, autor, freelancer, developer). Klik = naimportuje strukturu, uživatel vyplní obsah.
+**[plánováno] Šablony.** Hotové stromy pro typy uživatelů (designer, kouč, autor, freelancer, developer). Klik = naimportuje strukturu, uživatel vyplní obsah.
 
 ---
 
