@@ -1990,33 +1990,41 @@ export function renderSourceMenu() {
     menu.appendChild(sep);
 
     for (const entry of past) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'nav__source-item nav__source-item--recent';
+      const row = document.createElement('div');
+      row.className = 'nav__source-item nav__source-item--recent';
+      if (entry.type === 'snapshot') row.classList.add('nav__source-item--dim');
+
+      const main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'nav__source-item-main';
       const icon = entry.type === 'handle' ? '/' : entry.type === 'github' ? '⎇' : '⤓';
-      b.innerHTML = `<span class="nav__source-item-icon" aria-hidden="true">${icon}</span><span class="nav__source-item-label">${escapeHtml(entry.label)}</span>`;
+      main.innerHTML = `<span class="nav__source-item-icon" aria-hidden="true">${icon}</span><span class="nav__source-item-label">${escapeHtml(entry.label)}</span>`;
       if (entry.type === 'snapshot') {
-        b.title = 'Snapshot — pro otevření nahrajte složku znovu';
-        b.classList.add('nav__source-item--dim');
+        main.title = 'Snapshot — pro otevření nahrajte složku znovu';
       }
-      b.addEventListener('click', () => {
+      main.addEventListener('click', () => {
         closeMenu();
         reconnectRecent(entry);
       });
-      menu.appendChild(b);
-    }
+      row.appendChild(main);
 
-    // možnost vyčistit historii
-    const clearBtn = document.createElement('button');
-    clearBtn.type = 'button';
-    clearBtn.className = 'nav__source-item nav__source-item--clear';
-    clearBtn.textContent = 'Vyčistit historii';
-    clearBtn.addEventListener('click', async () => {
-      closeMenu();
-      await idbSetRecent([]);
-      renderSourceMenu();
-    });
-    menu.appendChild(clearBtn);
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'nav__source-item-del';
+      del.setAttribute('aria-label', 'Odstranit z historie');
+      del.title = 'Odstranit z historie';
+      del.textContent = '×';
+      const entryKey = recentKey(entry);
+      del.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const cur = await idbGetRecent();
+        await idbSetRecent(cur.filter((it) => recentKey(it) !== entryKey));
+        renderSourceMenu();
+      });
+      row.appendChild(del);
+
+      menu.appendChild(row);
+    }
   }).catch(() => {});
 }
 

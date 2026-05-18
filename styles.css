@@ -942,9 +942,30 @@ button {
 }
 .nav__source-item--recent {
   display: flex;
+  align-items: stretch;
+  padding: 0;
+  background: transparent;
+}
+.nav__source-item--recent:hover {
+  background: transparent;
+}
+.nav__source-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--fg);
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 6px 4px 6px 10px;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.nav__source-item-main:hover {
+  background: color-mix(in oklab, var(--c-yellow) 25%, transparent);
 }
 .nav__source-item-icon {
   color: var(--c-teal);
@@ -959,11 +980,27 @@ button {
   min-width: 0;
   flex: 1;
 }
-.nav__source-item--dim { color: var(--muted); }
-.nav__source-item--clear {
+.nav__source-item--dim .nav__source-item-main { color: var(--muted); }
+.nav__source-item-del {
+  background: transparent;
+  border: 0;
   color: var(--muted);
-  font-size: 11px;
-  margin-top: 2px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 10px;
+  margin-left: 2px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.nav__source-item--recent:hover .nav__source-item-del,
+.nav__source-item-del:focus-visible {
+  opacity: 1;
+}
+.nav__source-item-del:hover {
+  color: var(--c-red);
+  background: color-mix(in oklab, var(--c-red) 12%, transparent);
 }
 
 /* --- nav: git sekce ------------------------------------------------------ */
