@@ -64,7 +64,8 @@ V [.claude/launch.json](.claude/launch.json) je `python3 -m http.server 5173`. P
 ## Stack
 
 - `index.html` + ES module JS (`main.js` → `boot.js` + `mindmap.js`, `panels.js`, `keyboard.js`, `sources.js`, `state.js`, `url.js`, `editor.js`) + `styles.css` — bez frameworku
-- Cloudflare Pages hosting + Cloudflare Functions (`functions/`) — GitHub repo `junkycoder/fakan`
+- Cloudflare Worker `fakan-cz` se Static Assets bindingem (`not_found_handling: "single-page-application"` = SPA fallback) — GitHub repo `junkycoder/fakan`
+- Deploy: `bash bin/build.sh && CLOUDFLARE_ACCOUNT_ID=1fb320ef69377e04c649dcc880044f71 wrangler deploy` (build kopíruje produkční soubory do `dist/`)
 - Content fetchnutý za běhu z konfigurovaného GitHub repa (default `junkycoder/fakan.cz`); user může v UI přepnout na vlastní FS handle / GitHub repo / nahraný snapshot — všechny zdroje žijí v IDB
 
 ## Architektura — klíčové věci, co je dobré znát
@@ -146,13 +147,12 @@ fakan/
 ├── url.js                 URL ↔ state sync
 ├── editor.js              md editor
 ├── styles.css             paleta, layout, panely, nav
-├── pravidla.html          static stránka „pravidla užití"
 ├── README.md              produktová vize + roadmapa
 ├── CLAUDE.md              tenhle soubor
 ├── FOK.md                 logovník mezi sessionemi
-├── functions/             Cloudflare Pages Functions
-│   └── _middleware.js     SPA fallback
+├── wrangler.jsonc         Cloudflare Worker config (assets + SPA fallback)
 ├── bin/
+│   ├── build.sh           kopíruje produkční soubory do dist/ pro wrangler deploy
 │   └── serve.py           lokální dev server (SPA fallback)
 ├── tests/                 Playwright e2e
 ├── promo/                 screenshoty pro README/landing
