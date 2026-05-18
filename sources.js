@@ -888,6 +888,7 @@ async function loadAndMount(handle, opts = {}) {
     state.rootHandle = handle;
     state.githubSpec = null;
     state.uploadedSnapshot = null;
+    clearGhBaseline();
     state.originalTree = applyTreeOps(tree);
     state.currentRootPath = '';
     state.recenterHistory = [];
@@ -910,6 +911,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     state.rootHandle = null;
     state.githubSpec = null;
     state.uploadedSnapshot = { name: tree.name };
+    clearGhBaseline();
     state.originalTree = applyTreeOps(tree);
     state.currentRootPath = '';
     state.recenterHistory = [];
@@ -955,6 +957,7 @@ async function disconnectSource() {
   state.recenterHistory = [];
   state.treeNodes = [];
   state.currentBbox = null;
+  clearGhBaseline();
   state.byPath.clear();
   state.childrenByPath.clear();
   state.topQuadrant.clear();
@@ -1605,9 +1608,16 @@ function bytesToBase64(bytes) {
   return btoa(s);
 }
 
+// Sesbírá soubory, které se liší od posledního baselinu z GitHubu, plus add/delete.
+// Vrací entries `{ path, kind, data? }` kde kind ∈ {'add', 'mod', 'del'}.
+// Pro 'del' chybí `data`. Pokud baseline neexistuje (jiný zdroj než GitHub),
+// vrací prázdné pole — Publish dialog se stejně nezobrazuje bez githubSpec.
 async function collectGithubPushFiles(tree) {
+  if (!tree || !state.ghBaselineKey) return [];
   const enc = new TextEncoder();
-  const out = [];
+  const candidates = [];
+  const seen = new Set();
+
   const visit = (node, prefix) => {
     if (!node) return;
     if (node.type === 'dir') {
@@ -1617,13 +1627,36 @@ async function collectGithubPushFiles(tree) {
       }
       return;
     }
-    if (node.type === 'file') {
-      const override = loadEditOverrideByPath(prefix);
-      const text = override != null ? override : (typeof node.raw === 'string' ? node.raw : null);
-      if (text != null) out.push({ path: prefix, data: enc.encode(text) });
-    }
+    if (node.type !== 'file') return;
+    const [stem, ext] = splitExt(node.filename || node.name || '');
+    if (!isTextFile(node.filename || node.name || '', ext)) return;
+    seen.add(prefix);
+    const override = loadEditOverrideByPath(prefix);
+    const text = override != null ? override : (typeof node.raw === 'string' ? node.raw : null);
+    if (text == null) return; // binárka / nestáhnuté — neumíme diffovat ani pushnout
+    candidates.push({ path: prefix, text });
   };
-  if (tree?.children) for (const c of tree.children) visit(c, nodeSeg(c));
+  if (tree.children) for (const c of tree.children) visit(c, nodeSeg(c));
+
+  // SHA spočti paralelně (limit kvůli velkým stromům)
+  const out = [];
+  await pLimitAll(candidates.map((cand) => async () => {
+    const sha = await gitBlobSha(cand.text);
+    const baseSha = state.ghBaselineSha.get(cand.path);
+    if (baseSha == null) {
+      out.push({ path: cand.path, kind: 'add', data: enc.encode(cand.text) });
+    } else if (baseSha !== sha) {
+      out.push({ path: cand.path, kind: 'mod', data: enc.encode(cand.text) });
+    }
+  }), 8);
+
+  // smazané: byly v baselinu, ale v aktuálním stromě už nejsou
+  for (const p of state.ghBaselinePaths) {
+    if (!seen.has(p)) out.push({ path: p, kind: 'del' });
+  }
+
+  // deterministicky setřídit podle cesty kvůli stabilnímu UI
+  out.sort((a, b) => a.path.localeCompare(b.path));
   return out;
 }
 
@@ -1654,9 +1687,16 @@ async function ghPush(spec, message, files, onStatus) {
   const baseTreeSha = baseCommit.tree.sha;
 
   const tree = [];
+  const uploadedSha = new Map();   // path -> nový blob SHA (pro update baselinu)
+  const uploadCount = files.filter((f) => f.kind !== 'del').length;
   let done = 0;
   for (const f of files) {
-    note(`nahrávám blob ${done + 1}/${files.length}: ${f.path}`);
+    if (f.kind === 'del') {
+      // GitHub maže entry, pokud v tree pošleme `sha: null` v kombinaci s base_tree
+      tree.push({ path: f.path, mode: '100644', type: 'blob', sha: null });
+      continue;
+    }
+    note(`nahrávám blob ${done + 1}/${uploadCount}: ${f.path}`);
     const r = await fetch(`${base}/git/blobs`, {
       method: 'POST', headers,
       body: JSON.stringify({ content: bytesToBase64(f.data), encoding: 'base64' }),
@@ -1667,6 +1707,7 @@ async function ghPush(spec, message, files, onStatus) {
     }
     const blob = await r.json();
     tree.push({ path: f.path, mode: '100644', type: 'blob', sha: blob.sha });
+    uploadedSha.set(f.path, blob.sha);
     done++;
   }
 
@@ -1693,6 +1734,24 @@ async function ghPush(spec, message, files, onStatus) {
     body: JSON.stringify({ sha: newCommit.sha }),
   });
   if (!patchRes.ok) throw new Error(`ref patch ${patchRes.status}`);
+
+  // Promítni změny do baselinu, ať další otevření dialogu ukáže „žádné změny",
+  // dokud uživatel znovu něco needituje. Aktualizuj jen pokud baseline patří
+  // ke stejnému (owner/repo@branch).
+  const baselineKey = `${spec.owner}/${spec.repo}@${spec.branch || 'main'}`;
+  if (state.ghBaselineKey === baselineKey) {
+    for (const f of files) {
+      if (f.kind === 'del') {
+        state.ghBaselineSha.delete(f.path);
+        state.ghBaselinePaths.delete(f.path);
+      } else {
+        const sha = uploadedSha.get(f.path);
+        if (sha) state.ghBaselineSha.set(f.path, sha);
+        state.ghBaselinePaths.add(f.path);
+      }
+    }
+  }
+
   return { sha: newCommit.sha, unchanged: false };
 }
 
@@ -1734,7 +1793,7 @@ function renderGitMenu() {
     <input class="nav__git-input" type="text" data-git-msg placeholder="popis změny" autocomplete="off" spellcheck="false" value="update z fakan.cz">
     ${tokenFieldHtml}
     <div class="nav__git-status" data-git-status></div>
-    <button type="button" class="nav__git-publish" data-git-publish>Publish</button>
+    <button type="button" class="nav__git-publish" data-git-publish disabled>Publish</button>
   `;
 
   const changesEl = menu.querySelector('[data-git-changes]');
@@ -1750,19 +1809,36 @@ function renderGitMenu() {
     showBranchPicker();
   });
 
-  // seznam změn (vše, co se odešle) — async, ale fast
-  collectGithubPushFiles(state.originalTree).then((files) => {
+  // Diff vůči GitHub HEAD — async (počítá blob SHA pro každý kandidátní soubor)
+  const renderChanges = (files) => {
     if (!files.length) {
-      changesEl.innerHTML = '<div class="nav__git-changes-empty">žádné textové soubory</div>';
+      changesEl.innerHTML = '<div class="nav__git-changes-empty">žádné změny</div>';
+      publishBtn.disabled = true;
       return;
     }
-    const items = files.map((f) => `<li>${escapeHtml(f.path)}</li>`).join('');
+    const prefix = { mod: 'M', add: '+', del: '−' };
+    const items = files.map((f) =>
+      `<li class="nav__git-change nav__git-change--${f.kind}">` +
+      `<span class="nav__git-change-kind">${prefix[f.kind]}</span>` +
+      `<span class="nav__git-change-path">${escapeHtml(f.path)}</span>` +
+      `</li>`
+    ).join('');
+    const noun = files.length === 1 ? 'změna' : files.length < 5 ? 'změny' : 'změn';
+    const truncNote = state.ghBaselineTruncated
+      ? '<div class="nav__git-changes-warn">strom byl při načtení zkrácen — některé soubory baseline nezná</div>'
+      : '';
     changesEl.innerHTML = `
-      <div class="nav__git-changes-count">${files.length} ${files.length === 1 ? 'soubor' : files.length < 5 ? 'soubory' : 'souborů'} k odeslání</div>
+      <div class="nav__git-changes-count">${files.length} ${noun} k odeslání</div>
+      ${truncNote}
       <ul>${items}</ul>
     `;
-  }).catch(() => {
+    publishBtn.disabled = false;
+  };
+
+  collectGithubPushFiles(state.originalTree).then(renderChanges).catch((err) => {
+    console.error('diff failed', err);
     changesEl.innerHTML = '<div class="nav__git-changes-empty">chyba při čtení stromu</div>';
+    publishBtn.disabled = true;
   });
 
   const publish = async () => {
@@ -1777,8 +1853,8 @@ function renderGitMenu() {
       const files = await collectGithubPushFiles(state.originalTree);
       if (!files.length) {
         statusEl.dataset.kind = 'err';
-        statusEl.textContent = 'Žádné textové soubory s obsahem.';
-        publishBtn.disabled = false;
+        statusEl.textContent = 'Žádné změny k odeslání.';
+        publishBtn.disabled = true;
         return;
       }
       const pushSpec = { ...spec, token, branch };

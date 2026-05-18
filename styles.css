@@ -1058,6 +1058,23 @@ button {
   letter-spacing: 0.5px;
   margin-bottom: 4px;
 }
+.nav__git-changes-warn {
+  color: var(--c-orange);
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+.nav__git-change { display: flex; gap: 6px; align-items: baseline; }
+.nav__git-change-kind {
+  display: inline-block;
+  width: 0.8em;
+  text-align: center;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.nav__git-change-path { overflow: hidden; text-overflow: ellipsis; }
+.nav__git-change--mod .nav__git-change-kind { color: var(--c-yellow); }
+.nav__git-change--add .nav__git-change-kind { color: var(--c-green); }
+.nav__git-change--del .nav__git-change-kind { color: var(--c-red); }
 
 .nav__git-input,
 .nav__git-token {

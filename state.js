@@ -119,7 +119,45 @@ export const state = {
 
   // lokální tree edits (přidané / smazané uzly přes UI)
   treeOps: [],
+
+  // GitHub baseline pro diff v Publish dialogu — naplněno v loadFromGithub
+  ghBaselineKey: '',                  // 'owner/repo@branch'
+  ghBaselineSha: new Map(),           // path -> git blob SHA z /git/trees
+  ghBaselinePaths: new Set(),         // všechny cesty, které loader namountoval
+  ghBaselineTruncated: false,         // true pokud GitHub tree byl truncated
 };
+
+// --- git blob SHA -----------------------------------------------------------
+// Identický algoritmus jako `git hash-object`: sha1("blob " + byteLength + "\0" + content).
+// Vrací hex string, který odpovídá `sha` v `/git/trees?recursive=1` u GitHub API.
+
+export async function gitBlobSha(text) {
+  const enc = new TextEncoder();
+  const content = enc.encode(text ?? '');
+  const header = enc.encode(`blob ${content.length}\0`);
+  const buf = new Uint8Array(header.length + content.length);
+  buf.set(header, 0);
+  buf.set(content, header.length);
+  const digest = await crypto.subtle.digest('SHA-1', buf);
+  const bytes = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+  return hex;
+}
+
+export function setGhBaseline({ key, sha, paths, truncated }) {
+  state.ghBaselineKey = key || '';
+  state.ghBaselineSha = sha instanceof Map ? sha : new Map(Object.entries(sha || {}));
+  state.ghBaselinePaths = paths instanceof Set ? paths : new Set(paths || []);
+  state.ghBaselineTruncated = !!truncated;
+}
+
+export function clearGhBaseline() {
+  state.ghBaselineKey = '';
+  state.ghBaselineSha = new Map();
+  state.ghBaselinePaths = new Set();
+  state.ghBaselineTruncated = false;
+}
 
 // --- čisté util funkce ------------------------------------------------------
 
