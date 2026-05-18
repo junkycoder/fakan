@@ -16,7 +16,8 @@ mkdir -p dist
 
 cp index.html dist/
 cp styles.css dist/
-cp main.js boot.js mindmap.js panels.js keyboard.js sources.js state.js url.js editor.js dist/
+# Všechny ES moduly z rootu — nový soubor se sám přidá, žádný hardcoded seznam.
+cp ./*.js dist/
 cp -R vendor dist/
 
 echo "dist/ připravený ($(find dist -type f | wc -l | tr -d ' ') souborů)"
