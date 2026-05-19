@@ -3,6 +3,7 @@
 
 import { mountEditor } from './editor.js';
 import { mountTerminal } from './terminal.js';
+import { mountMc } from './mc.js';
 import {
   state,
   PANEL_CASCADE,
@@ -96,6 +97,7 @@ function renderMarkdown(md) {
 function defaultPanelMode(node) {
   if (!node) return 'source';
   if (node.type === 'terminal') return 'source';
+  if (node.type === 'mc') return 'source';
   if (node.kind === 'web') return 'rendered';
   if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
   // .md a .html otevíráme v rendered módu i bez načteného obsahu —
@@ -291,6 +293,7 @@ export function setActive(panel) {
 
 function pathLabel(node) {
   if (node.type === 'terminal') return `~/${node.name}`;
+  if (node.type === 'mc') return `~/${node.name}`;
   const p = node.path || '';
   if (!p) return '~/';
   // dir → trailing slash; root je '~/'
@@ -300,6 +303,9 @@ function pathLabel(node) {
 function sourceBody(node) {
   if (node.type === 'terminal') {
     return `<div class="terminal-mount" data-terminal-mount></div>`;
+  }
+  if (node.type === 'mc') {
+    return `<div class="mc-mount" data-mc-mount></div>`;
   }
   if (node.type === 'root') {
     return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
@@ -384,6 +390,7 @@ function dirIndexHtml(node) {
 
 function canBuild(node) {
   if (node.type === 'terminal') return false;
+  if (node.type === 'mc') return false;
   if (node.kind === 'web') return true;
   // MD a HTML jsou vždy buildable — pokud chybí obsah, panel ho lazy fetchne.
   if (node.kind === 'md' && (node.content || node.path)) return true;
@@ -489,10 +496,12 @@ function rerenderPanelBody(panel) {
   if (!bodyEl) return;
   destroyEditor(panel);
   destroyTerminal(panel);
+  destroyMc(panel);
   revokePanelUrls(panel);
   bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
   mountEditorIfNeeded(panel, bodyEl);
   mountTerminalIfNeeded(panel, bodyEl);
+  mountMcIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
 }
 
@@ -763,6 +772,7 @@ function mountTerminalIfNeeded(panel, bodyEl) {
     openMain: (n) => openMain(n),
     openPreview: (n) => openPreview(n),
     openAsFollower: (n) => openAsFollower(n),
+    openMc: (o) => openMcPanel(o || {}),
     closeAll: () => { for (const p of allPanels()) closePanel(p); },
     dockPanel: (zone) => { if (state.activePanel) dockPanel(state.activePanel, zone); },
     listPanels: () => allPanels().map((p) => ({
@@ -783,6 +793,26 @@ function destroyTerminal(panel) {
   }
 }
 
+function mountMcIfNeeded(panel, bodyEl) {
+  const host = bodyEl.querySelector('[data-mc-mount]');
+  if (!host) return;
+  const node = panel.node;
+  const handle = mountMc(host, {
+    cwd: node.cwd || '',
+    onClose: () => closePanel(panel),
+    openMain: (n) => openMain(n),
+    openPreview: (n) => openPreview(n),
+  });
+  panel.mc = handle;
+}
+
+function destroyMc(panel) {
+  if (panel.mc) {
+    try { panel.mc.destroy(); } catch {}
+    panel.mc = null;
+  }
+}
+
 function setupPanelInteractions(panel) {
   const el = panel.element;
   const head = el.querySelector('[data-panel-head]');
@@ -793,6 +823,7 @@ function setupPanelInteractions(panel) {
 
   mountEditorIfNeeded(panel, bodyEl);
   mountTerminalIfNeeded(panel, bodyEl);
+  mountMcIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
   installIframeMessageListener();
   closeBtn.addEventListener('click', () => closePanel(panel));
@@ -1039,6 +1070,23 @@ export function resumeLastEditor() {
 
 // Terminálové panely jsou virtuální uzly s unikátní cestou `__term__/<n>`,
 // aby nekolidovaly se zdrojem. Otevírají se jako preview (paralelně, nezavřou main).
+let _mcCounter = 0;
+export function openMcPanel(opts = {}) {
+  _mcCounter++;
+  const n = _mcCounter;
+  const node = {
+    type: 'mc',
+    name: `mc-${n}`,
+    filename: `mc-${n}`,
+    path: `__mc__/${n}`,
+    cwd: opts.cwd || '',
+  };
+  const panel = openPreview(node);
+  // MC dává smysl ve větším okně — zvětši preview na celou plochu
+  if (panel) toggleMax(panel);
+  return panel;
+}
+
 let _terminalCounter = 0;
 export function openTerminalPanel(opts = {}) {
   _terminalCounter++;
@@ -1180,6 +1228,7 @@ function openSiblingFiles(node) {
 export function closePanel(panel) {
   destroyEditor(panel);
   destroyTerminal(panel);
+  destroyMc(panel);
   revokePanelUrls(panel);
   panel.element.remove();
   if (panel === state.mainPanel) {

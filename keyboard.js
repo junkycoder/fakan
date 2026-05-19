@@ -126,6 +126,7 @@ export function setupKeyboard(_unused, vp) {
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (tgt && tgt.isContentEditable)) return;
     if (tgt && tgt.closest && tgt.closest('.vim')) return;
     if (tgt && tgt.closest && tgt.closest('.term')) return;
+    if (tgt && tgt.closest && tgt.closest('.mc')) return;
 
     // Mac: Cmd+Shift+*, Win: Ctrl+Shift+* — okenní zkratky
     const mod = e.metaKey || e.ctrlKey;

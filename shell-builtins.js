@@ -172,7 +172,7 @@ export const BUILTINS = {
     io.stdout('Bloky:    for x in a b c; do …; done  ·  if cmd; then …; fi  ·  while');
     io.stdout('Globs:    *.md  ·  blog/*.html');
     io.stdout('Joby:     ve vimu Ctrl+Z = suspend  ·  fg = návrat  ·  jobs');
-    io.stdout('Fakan:    open <p>  vim <p>  preview <p>  dock <z>  panels  recenter');
+    io.stdout('Fakan:    open <p>  vim <p>  preview <p>  dock <z>  panels  recenter  mc');
     io.stdout('CI:       ci run <p>  ·  ci run -c "<…>"  ·  ci token <s>  ·  ci health');
     io.stdout('Shell:    alias name=val  ·  unalias  ·  history  ·  export VAR=val');
     io.stdout('Rc:       ~/.fakanrc  — auto-source při startu terminálu');
@@ -378,6 +378,21 @@ export const BUILTINS = {
     if (!fn) { io.stderr('recenter: nedostupné'); return 1; }
     const target = args[0] != null ? resolvePath(session.cwd, args[0]) : '';
     fn(target);
+    return 0;
+  },
+
+  mc(args, session, io) {
+    const fn = session.host && session.host.openMc;
+    if (!fn) { io.stderr('mc: nedostupné v tomto kontextu'); return 1; }
+    // volitelný arg = startovní cesta (jinak aktuální cwd shellu)
+    let startCwd = session.cwd || '';
+    if (args[0]) {
+      const target = resolvePath(session.cwd, args[0]);
+      if (!exists(target)) { io.stderr(`mc: ${args[0]}: neexistuje`); return 1; }
+      if (!isDir(target)) { io.stderr(`mc: ${args[0]}: není adresář`); return 1; }
+      startCwd = target;
+    }
+    fn({ cwd: startCwd });
     return 0;
   },
 

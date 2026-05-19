@@ -61,6 +61,7 @@ export function mountTerminal(host, opts = {}) {
     openMain: opts.openMain || null,
     openPreview: opts.openPreview || null,
     openAsFollower: opts.openAsFollower || null,
+    openMc: opts.openMc || null,
     closeAll: opts.closeAll || null,
     dockPanel: opts.dockPanel || null,
     listPanels: opts.listPanels || null,
