@@ -2326,6 +2326,36 @@ function showHelpDialog() {
           <code>ci version</code>, denní využití: <code>ci quota</code>.
         </p>
 
+        <h3>Vlastní stroj přes tunel</h3>
+        <p>
+          Stejné rozhraní jako CI runner, ale skript běží na <b>vašem stroji</b> —
+          Raspberry Pi, domácím serveru, EC2 instanci, druhém Macu — přes
+          persistent WebSocket k Cloudflare Worker Durable Objectu. Žádný port
+          forward, žádný SSH klíč: stroj se sám hlásí ven, tunel je obousměrný.
+        </p>
+        <p><b>Spárování</b> (5 min flow, jednorázově per stroj):</p>
+        <ol>
+          <li>V terminálu fakanu: <code>ci tunnel pair home-pi</code> → vrátí 6-místný kód.</li>
+          <li>Na cílovém stroji nainstalujte <code>fakan-agent</code> (Go binary, ~8 MB; návod v
+          <code>agent/README.md</code>) a spusťte <code>fakan-agent pair &lt;kód&gt; home-pi</code>.
+          Token se uloží do <code>~/.fakan/agent.json</code> (chmod 600).</li>
+          <li>Pak <code>fakan-agent run</code> (nebo přes systemd / launchd) drží stálé
+          spojení s reconnectem.</li>
+        </ol>
+        <p><b>Použití</b> z terminálu fakanu:</p>
+        <table class="help-dialog__keys">
+          <tr><td><code>ci tunnel machines</code></td><td>seznam spárovaných strojů</td></tr>
+          <tr><td><code>ci tunnel run &lt;id&gt; -c "&hellip;"</code></td><td>spustit inline příkaz na stroji</td></tr>
+          <tr><td><code>ci tunnel run &lt;id&gt; deploy.sh</code></td><td>spustit lokální .sh soubor na stroji</td></tr>
+          <tr><td><code>ci tunnel revoke &lt;id&gt;</code></td><td>odebrat stroj a invalidovat jeho token</td></tr>
+        </table>
+        <p>
+          Limity: max 8 strojů per účet, output 5 MB / run, jeden job najednou per agent.
+          Bezpečnost: agent token je single-secret v KV, hash-only ukládání;
+          každý run běží jako <code>bash -c</code> pod uživatelem, kterým je daemon
+          spuštěný — proto agent NEspouštějte jako root.
+        </p>
+
         <h3>Zdroje dat</h3>
         <p>
           Tlačítkem v levém horním rohu („Zdroj“) přepínáte odkud fakan čte strom:
