@@ -2252,14 +2252,14 @@ function showHelpDialog() {
 
         <h3>Zdroje dat</h3>
         <p>
-          V dolní liště („Zdroj“) přepínáte odkud fakan čte strom:
+          Tlačítkem v levém horním rohu („Zdroj“) přepínáte odkud fakan čte strom:
         </p>
         <ul>
           <li><b>GitHub repo</b> — <code>github:owner/repo[@branch]</code>. Veřejné fungují anonymně, na soukromé zadejte token.</li>
           <li><b>Lokální složka</b> — File System Access API (Chrome/Edge/Arc). Strom se promítá živě z disku.</li>
           <li><b>Snapshot</b> — nahraný ZIP/složka. Read-only, hodí se na demo nebo offline procházení.</li>
         </ul>
-        <p>Nedávno použité zdroje najdete v menu „Zdroj“. <b>Git Publish</b> commitne změny do GitHub repa rovnou z UI.</p>
+        <p>Vedle zdroje sedí přepínač větve (pro GitHub) a tlačítko <b>Publish</b> / <b>Stáhnout</b> — publishne změny rovnou do GitHubu, nebo si stáhne ZIP. Nedávné zdroje najdete v dropdownu „Zdroj“.</p>
 
         <h3>Mapa — jak se kreslí</h3>
         <p>
