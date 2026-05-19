@@ -1,57 +1,73 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "fakan-cz",
-  "main": "worker/index.js",
-  "compatibility_date": "2026-05-18",
-  "compatibility_flags": ["nodejs_compat"],
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
-  },
-  "observability": {
-    "enabled": true
-  }
-  // RUNNER_SECRET se nastavuje přes `wrangler secret put RUNNER_SECRET`
-  // (ne do tohoto souboru, aby nešel commitnout). V terminálu fakanu pak
-  // `ci token <stejný-secret>` uloží stejnou hodnotu do localStorage prohlížeče.
-  //
-  // KV namespace pro denní quotu (volitelné — bez něj gate vypnutý):
-  //   wrangler kv namespace create RUNNER_QUOTA
-  //   wrangler kv namespace create RUNNER_QUOTA --preview
-  // a vzniklé ID vlož sem:
-  //
-  // "kv_namespaces": [
-  //   { "binding": "RUNNER_QUOTA", "id": "<production-id>", "preview_id": "<preview-id>" }
-  // ],
-  //
-  // Limity (volitelné env vary — defaulty jsou rozumné, viz worker/quota.js):
-  // "vars": {
-  //   "MAX_RUNS_PER_DAY": "100",
-  //   "MAX_COMPUTE_MS_PER_DAY": "3600000",
-  //   "MAX_RUN_WALL_MS": "300000",
-  //   "RUNNER_IMPL": "container"
-  // }
-  //
-  // Cloudflare Containers (iterace 9) — skutečný bash místo mocku.
-  // Vyžaduje Containers feature v účtu (open beta) a wrangler ≥ 4.x.
-  // Obraz se buildí z worker/Dockerfile při `wrangler deploy`.
-  // Po odkomentování níže nastav RUNNER_IMPL=container ve `vars` výše.
-  //
-  // "containers": [
-  //   {
-  //     "class_name": "ShellContainer",
-  //     "image": "./worker/Dockerfile",
-  //     "max_instances": 3,
-  //     "instance_type": "basic"
-  //   }
-  // ],
-  // "durable_objects": {
-  //   "bindings": [
-  //     { "name": "SHELL", "class_name": "ShellContainer" }
-  //   ]
-  // },
-  // "migrations": [
-  //   { "tag": "v1", "new_sqlite_classes": ["ShellContainer"] }
-  // ]
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fakan-cz",
+	"main": "worker/index.js",
+	"compatibility_date": "2026-05-18",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// RUNNER_SECRET se nastavuje přes `wrangler secret put RUNNER_SECRET`
+	// (ne do tohoto souboru, aby nešel commitnout). V terminálu fakanu pak
+	// `ci token <stejný-secret>` uloží stejnou hodnotu do localStorage prohlížeče.
+	//
+	// KV namespace pro denní quotu (volitelné — bez něj gate vypnutý).
+	// Cloudflare strana chce unikátní názvy namespaců, ale binding ve Workeru
+	// je jen jeden (Worker volá env.RUNNER_QUOTA bez ohledu na prostředí —
+	// wrangler sám rozhoduje, jestli použije `id` (deploy) nebo `preview_id`
+	// (wrangler dev)).
+	//
+	// Vytvoření (jednorázově):
+	//   wrangler kv namespace create RUNNER_QUOTA           → ID pro `id`
+	//   wrangler kv namespace create RUNNER_QUOTA_PREVIEW   → ID pro `preview_id`
+	// Můžete dát to samé ID do obou polí, pokud nepotřebujete oddělit dev/prod stav.
+	"kv_namespaces": [
+		{
+			"binding": "RUNNER_QUOTA",
+			"id": "0442f7239e1b4759b005b8241acc39e6",
+			"preview_id": "0442f7239e1b4759b005b8241acc39e6"
+		}
+	],
+	// Limity (volitelné env vary — defaulty jsou rozumné, viz worker/quota.js):
+	"vars": {
+		"MAX_RUNS_PER_DAY": "100",
+		"MAX_COMPUTE_MS_PER_DAY": "3600000",
+		"MAX_RUN_WALL_MS": "300000",
+		"RUNNER_IMPL": "container"
+	},
+	// Cloudflare Containers (iterace 9) — skutečný bash místo mocku.
+	// Vyžaduje Containers feature v účtu (open beta) a wrangler ≥ 4.x.
+	// Obraz se buildí z worker/Dockerfile při `wrangler deploy`.
+	// Po odkomentování níže nastav RUNNER_IMPL=container ve `vars` výše.
+	"containers": [
+		{
+			"class_name": "ShellContainer",
+			"image": "./worker/Dockerfile",
+			"max_instances": 3,
+			"instance_type": "basic"
+		}
+	],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SHELL",
+				"class_name": "ShellContainer"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": [
+				"ShellContainer"
+			]
+		}
+	]
 }

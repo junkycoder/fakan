@@ -110,22 +110,42 @@ ci quota
 
 ## Nasazení
 
-1. Nastav secret (jednorázově):
+1. **Runner secret** (jednorázově):
    ```bash
    wrangler secret put RUNNER_SECRET
-   # paste a long random string, např. `openssl rand -base64 32`
+   # paste long random, např. `openssl rand -base64 32`
    ```
 
-2. Build + deploy:
+2. **KV namespace pro quota** (volitelné, ale doporučené pro produkci).
+   Cloudflare chce unikátní jména namespaců, binding ve Workeru je společný:
    ```bash
-   bash bin/build.sh
-   CLOUDFLARE_ACCOUNT_ID=… wrangler deploy
+   wrangler kv namespace create RUNNER_QUOTA           # → id pro production
+   wrangler kv namespace create RUNNER_QUOTA_PREVIEW   # → id pro preview
+   ```
+   ID vlož do `wrangler.jsonc`:
+   ```jsonc
+   "kv_namespaces": [
+     { "binding": "RUNNER_QUOTA", "id": "<prod>", "preview_id": "<prev>" }
+   ]
+   ```
+   (Pro single-user dev můžeš dát do obou polí to samé ID.)
+
+3. **Docker daemon** musí běžet (Docker Desktop / OrbStack / colima) — wrangler
+   během deploye spustí `docker build` z `worker/Dockerfile`, pushne image do
+   Cloudflare registry a nasadí Worker s odkazem. Bez Dockeru můžeš containery
+   v `wrangler.jsonc` zakomentovat — Worker pojede dál v mock režimu.
+
+4. **Build + deploy**:
+   ```bash
+   make deploy
+   # ekvivalent: bash bin/build.sh && wrangler deploy
    ```
 
-3. V terminálu fakanu nastav stejný secret:
+5. **V terminálu fakanu**:
    ```
    ci token <ten-samý-string>
-   ci health
+   ci health    # → {ok:true,...}
+   ci run -c "echo ahoj"
    ```
 
 ## Lokální dev
