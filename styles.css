@@ -880,29 +880,91 @@ button {
   opacity: 0.85;
 }
 
-/* --- nav: zdrojové tlačítko + dropdown ----------------------------------- */
-.nav__source { position: relative; outline: none; }
-.nav__source-btn {
+/* --- srcbar: top-left logo (zdroj + větev + publish) --------------------- */
+.srcbar {
+  position: fixed;
+  top: calc(12px + var(--safe-t));
+  left: calc(12px + var(--safe-l));
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 24px);
+}
+
+.srcbar__source,
+.srcbar__branch,
+.srcbar__publish {
+  position: relative;
+  outline: none;
+}
+.srcbar__source[hidden],
+.srcbar__branch[hidden],
+.srcbar__publish[hidden] { display: none; }
+
+.srcbar__source-btn,
+.srcbar__branch-btn,
+.srcbar__publish-btn {
   font-family: var(--mono);
   font-size: 12px;
-  color: var(--muted);
-  padding: 2px 8px;
-  border-radius: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
-  max-width: 32vw;
+  cursor: pointer;
+  background: color-mix(in oklab, var(--bg) 80%, transparent);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--line);
+  color: var(--fg);
+}
+
+/* Zdroj = „logo", o něco větší a vždy viditelný */
+.srcbar__source-btn {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.srcbar__source-label {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 32vw;
 }
-.nav__source:hover .nav__source-btn,
-.nav__source:focus-within .nav__source-btn { color: var(--c-yellow); }
-.nav__source-caret { opacity: 0.6; }
+.srcbar__caret { opacity: 0.55; font-weight: 400; }
 
-.nav__source-dropdown {
+.srcbar__source:hover .srcbar__source-btn,
+.srcbar__source:focus-within .srcbar__source-btn { color: var(--c-yellow); }
+
+/* Větev — sekundární, zelený akcent */
+.srcbar__branch-btn { color: var(--c-green); }
+.srcbar__branch-glyph { opacity: 0.85; }
+.srcbar__branch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 20vw;
+}
+.srcbar__branch:hover .srcbar__branch-btn,
+.srcbar__branch:focus-within .srcbar__branch-btn { filter: brightness(1.1); }
+
+/* Publish / stáhnout */
+.srcbar__publish-btn { color: var(--c-green); }
+.srcbar__publish-glyph { opacity: 0.85; }
+.srcbar__publish-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 20vw;
+}
+.srcbar__publish:hover .srcbar__publish-btn,
+.srcbar__publish:focus-within .srcbar__publish-btn { filter: brightness(1.1); }
+
+/* --- srcbar dropdown menu (zdroj i větve) -------------------------------- */
+.srcbar__menu {
   position: absolute;
-  bottom: calc(100% + 8px);
+  top: calc(100% + 8px);
   left: 0;
   background: var(--bg);
   border: 1px solid var(--line);
@@ -912,20 +974,28 @@ button {
   flex-direction: column;
   gap: 2px;
   min-width: 220px;
+  max-height: 60vh;
+  overflow-y: auto;
   box-shadow: 0 8px 30px rgba(0,0,0,0.18);
 }
-.nav__source-dropdown::before {
+.srcbar__menu::before {
+  /* hover bridge — žádná „díra" mezi tlačítkem a menu */
   content: '';
   position: absolute;
   left: 0; right: 0;
-  bottom: -8px;
+  top: -8px;
   height: 8px;
 }
-.nav__source:hover .nav__source-dropdown,
-.nav__source:focus-within .nav__source-dropdown { display: flex; }
-.nav__source.is-open .nav__source-dropdown { display: flex; }
+.srcbar__source:hover .srcbar__menu,
+.srcbar__source:focus-within .srcbar__menu,
+.srcbar__source.is-open .srcbar__menu,
+.srcbar__branch:hover .srcbar__menu,
+.srcbar__branch:focus-within .srcbar__menu,
+.srcbar__branch.is-open .srcbar__menu { display: flex; }
 
-.nav__source-item {
+.srcbar__menu--branch { min-width: 180px; }
+
+.srcbar__item {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--fg);
@@ -934,18 +1004,25 @@ button {
   text-align: left;
   white-space: nowrap;
   cursor: pointer;
+  background: transparent;
+  border: 0;
 }
-.nav__source-item:hover:not(:disabled) {
+.srcbar__item:hover:not(:disabled) {
   background: color-mix(in oklab, var(--c-yellow) 25%, transparent);
 }
-.nav__source-item:disabled { color: var(--muted); cursor: default; opacity: 0.55; }
-.nav__source-item--danger { color: var(--c-red); }
-.nav__source-item--danger:hover:not(:disabled) {
+.srcbar__item:disabled { color: var(--muted); cursor: default; opacity: 0.55; }
+.srcbar__item--danger { color: var(--c-red); }
+.srcbar__item--danger:hover:not(:disabled) {
   background: color-mix(in oklab, var(--c-red) 15%, transparent);
 }
+.srcbar__item--current {
+  color: var(--c-green);
+  font-weight: 600;
+  cursor: default;
+}
+.srcbar__item--current:hover { background: transparent; }
 
-/* sekce „nedávné" v source dropdownu */
-.nav__source-sep {
+.srcbar__sep {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--muted);
@@ -955,16 +1032,14 @@ button {
   border-top: 1px solid var(--line);
   margin-top: 4px;
 }
-.nav__source-item--recent {
+.srcbar__item--recent {
   display: flex;
   align-items: stretch;
   padding: 0;
   background: transparent;
 }
-.nav__source-item--recent:hover {
-  background: transparent;
-}
-.nav__source-item-main {
+.srcbar__item--recent:hover { background: transparent; }
+.srcbar__item-main {
   flex: 1;
   min-width: 0;
   display: flex;
@@ -979,24 +1054,24 @@ button {
   cursor: pointer;
   border-radius: 4px;
 }
-.nav__source-item-main:hover {
+.srcbar__item-main:hover {
   background: color-mix(in oklab, var(--c-yellow) 25%, transparent);
 }
-.nav__source-item-icon {
+.srcbar__item-icon {
   color: var(--c-teal);
   width: 12px;
   display: inline-block;
   text-align: center;
 }
-.nav__source-item-label {
+.srcbar__item-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
   flex: 1;
 }
-.nav__source-item--dim .nav__source-item-main { color: var(--muted); }
-.nav__source-item-del {
+.srcbar__item--dim .srcbar__item-main { color: var(--muted); }
+.srcbar__item-del {
   background: transparent;
   border: 0;
   color: var(--muted);
@@ -1009,40 +1084,14 @@ button {
   opacity: 0;
   transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
 }
-.nav__source-item--recent:hover .nav__source-item-del,
-.nav__source-item-del:focus-visible {
-  opacity: 1;
-}
-.nav__source-item-del:hover {
+.srcbar__item--recent:hover .srcbar__item-del,
+.srcbar__item-del:focus-visible { opacity: 1; }
+.srcbar__item-del:hover {
   color: var(--c-red);
   background: color-mix(in oklab, var(--c-red) 12%, transparent);
 }
 
-/* --- nav: Publish button ------------------------------------------------- */
-.nav__publish { position: relative; outline: none; }
-.nav__publish[hidden] { display: none; }
-.nav__publish-btn {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--c-green);
-  padding: 2px 8px;
-  border-radius: 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-  max-width: 24vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-  background: transparent;
-  border: none;
-}
-.nav__publish-glyph { opacity: 0.8; }
-.nav__publish:hover .nav__publish-btn,
-.nav__publish:focus-within .nav__publish-btn { filter: brightness(1.1); }
-
-/* --- nav na mobilu: roztáhnout ostrov ------------------------------------ */
+/* --- nav na mobilu: roztáhnout spodní ostrov ----------------------------- */
 @media (max-width: 600px) {
   .nav {
     width: calc(100vw - 16px);
@@ -1063,9 +1112,12 @@ button {
     min-width: 0;
     flex: 1;
   }
-  .nav__source-btn { max-width: 38vw; }
   .nav__home-btn { max-width: 32vw; }
-  .nav__publish-btn { max-width: 30vw; }
+
+  /* srcbar — užší label, ať se vejde i s větví a publishem */
+  .srcbar__source-label { max-width: 38vw; }
+  .srcbar__branch-label { max-width: 16vw; }
+  .srcbar__publish-label { max-width: 16vw; }
 }
 
 /* --- GitHub dialog ------------------------------------------------------- */
@@ -1336,6 +1388,20 @@ button {
   max-width: 180px;
 }
 .pub-dialog__branch-sel:focus { border-color: var(--c-green); }
+.pub-dialog__branch-ctx {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--c-green);
+  background: color-mix(in oklab, var(--c-green) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--c-green) 30%, var(--line));
+  border-radius: 6px;
+  padding: 3px 8px;
+  flex: 0 0 auto;
+}
+.pub-dialog__branch-glyph { opacity: 0.85; }
 .pub-dialog__changes {
   font-family: var(--mono);
   font-size: 12px;

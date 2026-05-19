@@ -1718,16 +1718,16 @@ function renderPublishButton() {
   const label = wrap.querySelector('[data-publish-label]');
 
   if (state.githubSpec) {
-    glyph.textContent = '⎇';
-    label.textContent = state.githubSpec.branch || 'main';
+    glyph.textContent = '↑';
+    label.textContent = 'Publish';
     btn.setAttribute('aria-label', `Publish do ${state.githubSpec.owner}/${state.githubSpec.repo}`);
   } else if (state.uploadedSnapshot) {
     glyph.textContent = '↓';
-    label.textContent = 'stáhnout';
+    label.textContent = 'Stáhnout';
     btn.setAttribute('aria-label', 'Stáhnout snapshot');
   } else {
     glyph.textContent = '↓';
-    label.textContent = 'stáhnout';
+    label.textContent = 'Stáhnout';
     btn.setAttribute('aria-label', 'Stáhnout složku jako ZIP');
   }
 
@@ -1735,6 +1735,84 @@ function renderPublishButton() {
     btn.dataset.bound = '1';
     btn.addEventListener('click', () => showPublishDialog());
   }
+}
+
+// --- Branch picker v top-left srcbaru -------------------------------------
+function renderBranchPicker() {
+  const wrap = document.querySelector('[data-nav-branch]');
+  if (!wrap) return;
+  const spec = state.githubSpec;
+  if (!spec) {
+    wrap.setAttribute('hidden', '');
+    return;
+  }
+  wrap.removeAttribute('hidden');
+
+  const label = wrap.querySelector('[data-branch-label]');
+  const menu = wrap.querySelector('[data-branch-menu]');
+  const btn = wrap.querySelector('[data-branch-btn]');
+  const current = spec.branch || 'main';
+  if (label) label.textContent = current;
+  if (btn) btn.setAttribute('aria-label', `Větev: ${current}`);
+  if (!menu) return;
+
+  // Placeholder, dokud nedoběhne API
+  menu.innerHTML = '';
+  const loading = document.createElement('div');
+  loading.className = 'srcbar__item';
+  loading.setAttribute('aria-disabled', 'true');
+  loading.textContent = 'načítám větve…';
+  menu.appendChild(loading);
+
+  const closeMenu = () => {
+    wrap.classList.remove('is-open');
+    if (document.activeElement && wrap.contains(document.activeElement)) document.activeElement.blur();
+  };
+
+  ghListBranches(spec).then((branches) => {
+    if (!branches.length) {
+      menu.innerHTML = '';
+      const empty = document.createElement('div');
+      empty.className = 'srcbar__item';
+      empty.setAttribute('aria-disabled', 'true');
+      empty.textContent = '(žádné větve)';
+      menu.appendChild(empty);
+      return;
+    }
+    const ordered = branches.slice().sort((a, b) => {
+      if (a === current) return -1;
+      if (b === current) return 1;
+      return a.localeCompare(b);
+    });
+    menu.innerHTML = '';
+    for (const b of ordered) {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'srcbar__item' + (b === current ? ' srcbar__item--current' : '');
+      item.textContent = b;
+      if (b === current) {
+        item.disabled = true;
+      } else {
+        item.addEventListener('click', async () => {
+          closeMenu();
+          try {
+            await connectGithub({ ...spec, branch: b });
+          } catch (err) {
+            console.error('branch switch failed', err);
+          }
+        });
+      }
+      menu.appendChild(item);
+    }
+  }).catch((err) => {
+    console.error('branches', err);
+    menu.innerHTML = '';
+    const errEl = document.createElement('div');
+    errEl.className = 'srcbar__item';
+    errEl.setAttribute('aria-disabled', 'true');
+    errEl.textContent = 'chyba při načítání větví';
+    menu.appendChild(errEl);
+  });
 }
 
 function showPublishDialog() {
@@ -1815,12 +1893,10 @@ function showGithubPublishDialog() {
   body.innerHTML = `
     <div class="pub-dialog__head">
       <span class="pub-dialog__repo">${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</span>
-      <label class="pub-dialog__branch">
-        <span>větev:</span>
-        <select class="pub-dialog__branch-sel" data-pub-branch>
-          <option value="${escapeHtml(branch)}" selected>${escapeHtml(branch)}</option>
-        </select>
-      </label>
+      <span class="pub-dialog__branch-ctx" aria-label="Větev">
+        <span class="pub-dialog__branch-glyph" aria-hidden="true">⎇</span>
+        <span>${escapeHtml(branch)}</span>
+      </span>
     </div>
     <div class="pub-dialog__changes" data-pub-changes>
       <div class="pub-dialog__changes-empty">načítám změny…</div>
@@ -1834,7 +1910,6 @@ function showGithubPublishDialog() {
     </div>
   `;
 
-  const branchSel = body.querySelector('[data-pub-branch]');
   const changesEl = body.querySelector('[data-pub-changes]');
   const msgIn = body.querySelector('[data-pub-msg]');
   const tokenIn = body.querySelector('[data-pub-token]');
@@ -1843,39 +1918,6 @@ function showGithubPublishDialog() {
   const cancelBtn = body.querySelector('[data-pub-cancel]');
 
   cancelBtn.addEventListener('click', close);
-
-  // Lazy: populate branch select
-  ghListBranches(spec).then((branches) => {
-    if (!branches.length) return;
-    const ordered = branches.slice().sort((a, b) => {
-      if (a === branch) return -1;
-      if (b === branch) return 1;
-      return a.localeCompare(b);
-    });
-    branchSel.innerHTML = ordered.map((b) =>
-      `<option value="${escapeHtml(b)}"${b === branch ? ' selected' : ''}>${escapeHtml(b)}</option>`
-    ).join('');
-  }).catch((err) => {
-    console.error('branches', err);
-  });
-
-  branchSel.addEventListener('change', async () => {
-    const next = branchSel.value;
-    if (!next || next === branch) return;
-    statusEl.dataset.kind = 'info';
-    statusEl.textContent = `přepínám na ${next}…`;
-    publishBtn.disabled = true;
-    branchSel.disabled = true;
-    try {
-      await connectGithub({ ...spec, branch: next }, (m) => { statusEl.textContent = m; });
-      close();
-    } catch (err) {
-      console.error(err);
-      statusEl.dataset.kind = 'err';
-      statusEl.textContent = `Chyba: ${err.message}`;
-      branchSel.disabled = false;
-    }
-  });
 
   // Diff vůči GitHub HEAD
   const renderChanges = (files) => {
@@ -1957,6 +1999,7 @@ function showGithubPublishDialog() {
 
 export function renderSourceMenu() {
   renderPublishButton();
+  renderBranchPicker();
   const label = document.querySelector('[data-source-label]');
   const menu = document.querySelector('[data-source-menu]');
   const labelText = state.rootHandle ? state.rootHandle.name
@@ -1995,7 +2038,7 @@ export function renderSourceMenu() {
   for (const it of items) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'nav__source-item' + (it.danger ? ' nav__source-item--danger' : '');
+    b.className = 'srcbar__item' + (it.danger ? ' srcbar__item--danger' : '');
     b.textContent = it.label;
     if (it.title) b.title = it.title;
     if (it.disabled) b.disabled = true;
@@ -2014,20 +2057,20 @@ export function renderSourceMenu() {
     if (!past.length) return;
 
     const sep = document.createElement('div');
-    sep.className = 'nav__source-sep';
+    sep.className = 'srcbar__sep';
     sep.textContent = 'Nedávné';
     menu.appendChild(sep);
 
     for (const entry of past) {
       const row = document.createElement('div');
-      row.className = 'nav__source-item nav__source-item--recent';
-      if (entry.type === 'snapshot') row.classList.add('nav__source-item--dim');
+      row.className = 'srcbar__item srcbar__item--recent';
+      if (entry.type === 'snapshot') row.classList.add('srcbar__item--dim');
 
       const main = document.createElement('button');
       main.type = 'button';
-      main.className = 'nav__source-item-main';
+      main.className = 'srcbar__item-main';
       const icon = entry.type === 'handle' ? '/' : entry.type === 'github' ? '⎇' : '⤓';
-      main.innerHTML = `<span class="nav__source-item-icon" aria-hidden="true">${icon}</span><span class="nav__source-item-label">${escapeHtml(entry.label)}</span>`;
+      main.innerHTML = `<span class="srcbar__item-icon" aria-hidden="true">${icon}</span><span class="srcbar__item-label">${escapeHtml(entry.label)}</span>`;
       if (entry.type === 'snapshot') {
         main.title = 'Snapshot — pro otevření nahrajte složku znovu';
       }
@@ -2039,7 +2082,7 @@ export function renderSourceMenu() {
 
       const del = document.createElement('button');
       del.type = 'button';
-      del.className = 'nav__source-item-del';
+      del.className = 'srcbar__item-del';
       del.setAttribute('aria-label', 'Odstranit z historie');
       del.title = 'Odstranit z historie';
       del.textContent = '×';

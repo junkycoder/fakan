@@ -21,21 +21,31 @@
     </div>
   </main>
 
+  <div class="srcbar" id="srcbar" aria-label="Zdroj">
+    <div class="srcbar__source" data-nav-source tabindex="0">
+      <button class="srcbar__source-btn" type="button" aria-label="Zdroj dat" data-source-btn>
+        <span class="srcbar__source-label" data-source-label>Zdroj</span>
+        <span class="srcbar__caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="srcbar__menu" data-source-menu aria-label="Akce zdroje"></div>
+    </div>
+    <div class="srcbar__branch" data-nav-branch tabindex="0" hidden>
+      <button class="srcbar__branch-btn" type="button" aria-label="Větev" data-branch-btn>
+        <span class="srcbar__branch-glyph" aria-hidden="true">⎇</span>
+        <span class="srcbar__branch-label" data-branch-label>main</span>
+        <span class="srcbar__caret" aria-hidden="true">▾</span>
+      </button>
+      <div class="srcbar__menu srcbar__menu--branch" data-branch-menu aria-label="Větve"></div>
+    </div>
+    <div class="srcbar__publish" data-nav-publish hidden>
+      <button class="srcbar__publish-btn" type="button" data-publish-btn aria-label="Publish">
+        <span class="srcbar__publish-glyph" data-publish-glyph aria-hidden="true">↑</span>
+        <span class="srcbar__publish-label" data-publish-label>Publish</span>
+      </button>
+    </div>
+  </div>
+
   <nav class="nav" id="nav" aria-label="Navigace">
-    <div class="nav__source" data-nav-source tabindex="0">
-      <button class="nav__source-btn" type="button" aria-label="Zdroj dat" data-source-btn>
-        <span data-source-label>Zdroj</span>
-        <span class="nav__source-caret" aria-hidden="true">▾</span>
-      </button>
-      <div class="nav__source-dropdown" data-source-menu aria-label="Akce zdroje"></div>
-    </div>
-    <div class="nav__publish" data-nav-publish hidden>
-      <button class="nav__publish-btn" type="button" data-publish-btn aria-label="Publish">
-        <span class="nav__publish-glyph" data-publish-glyph aria-hidden="true">⎇</span>
-        <span class="nav__publish-label" data-publish-label>Publish</span>
-      </button>
-    </div>
-    <span class="nav__sep" aria-hidden="true"></span>
     <div class="nav__home" data-nav-home tabindex="0">
       <button class="nav__home-btn" type="button" aria-label="Skok na hlavní strom" data-home-btn>~/</button>
       <div class="nav__dropdown" id="nav-dropdown" aria-label="Historie navštívených složek"></div>
