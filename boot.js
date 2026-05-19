@@ -71,15 +71,16 @@ export async function boot() {
   renderSourceMenu();
   mountBadge();
   renderEmptyHint(null);
-  showEmptyState();
-  // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub.
-  // Pokud uspěje, schová empty hint sám.
-  await (async () => {
-    if (await tryRestoreSource()) return;
-    if (await tryRestoreGithub()) return;
-    if (await tryRestoreSnapshot()) return;
-    await tryLoadDefaultSource();
+  // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub, pak default.
+  // Empty state ukážeme teprve když nic z toho neuspěje — jinak by „Bez zdroje"
+  // problikl dřív, než stihne naskočit loader uvnitř connectGithub / loadAndMount.
+  const mounted = await (async () => {
+    if (await tryRestoreSource()) return true;
+    if (await tryRestoreGithub()) return true;
+    if (await tryRestoreSnapshot()) return true;
+    return await tryLoadDefaultSource();
   })();
+  if (!mounted) showEmptyState();
   restoreRecenterHistory();
   initFromUrl();
   maybeOpenDefaultIndex();
