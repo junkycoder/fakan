@@ -128,6 +128,58 @@ export async function ciTunnelMachines() {
   return await res.json();
 }
 
+// WS connect proti DO TunnelRelay (browser role). Vrací { kill, wait }
+// stejně jako ciStartRun, ale messages jsou agent-tunneled.
+export function ciTunnelStartRun(machineId, script, opts = {}) {
+  const token = ciGetToken();
+  if (!token) throw new Error('chybí token (zkuste `ci token <secret>`)');
+  if (!machineId) throw new Error('chybí machineId');
+
+  const base = endpointBase().replace(/^http/i, 'ws');
+  const u = new URL(base + '/api/tunnel/browser');
+  u.searchParams.set('machine', machineId);
+  u.searchParams.set('token', token);
+  const ws = new WebSocket(u.toString());
+
+  let exitCode = null;
+  let exitResolve;
+  const exitPromise = new Promise((r) => { exitResolve = r; });
+
+  ws.addEventListener('open', () => {
+    try {
+      ws.send(JSON.stringify({ type: 'start', script: String(script || '') }));
+    } catch (e) { opts.onError && opts.onError(e); }
+  });
+  ws.addEventListener('message', (e) => {
+    let msg;
+    try { msg = JSON.parse(e.data); }
+    catch (err) { opts.onError && opts.onError(err); return; }
+    if (msg.type === 'exit') {
+      exitCode = msg.code;
+      exitResolve(msg.code);
+    }
+    if (msg.type === 'system' && (msg.event === 'agent_offline' || msg.event === 'agent_disconnected')) {
+      // agent není živý, končíme s exit 1
+      exitCode = exitCode == null ? 1 : exitCode;
+    }
+    opts.onMessage && opts.onMessage(msg);
+  });
+  ws.addEventListener('close', (e) => {
+    if (exitCode == null) exitResolve(0);
+    opts.onClose && opts.onClose(e);
+  });
+  ws.addEventListener('error', (e) => opts.onError && opts.onError(e));
+
+  return {
+    kill() {
+      try { ws.send(JSON.stringify({ type: 'kill' })); } catch {}
+      try { ws.close(1000, 'client kill'); } catch {}
+    },
+    wait() { return exitPromise; },
+    socket: ws,
+  };
+}
+
 export async function ciTunnelRevoke(machineId) {
   const u = tunnelUrl('/api/tunnel/machine/' + encodeURIComponent(machineId));
   const res = await fetch(u.toString(), { method: 'DELETE' });

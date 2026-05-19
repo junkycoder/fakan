@@ -59,6 +59,10 @@
 			{
 				"name": "SHELL",
 				"class_name": "ShellContainer"
+			},
+			{
+				"name": "TUNNEL_RELAY",
+				"class_name": "TunnelRelay"
 			}
 		]
 	},
@@ -67,6 +71,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"ShellContainer"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"TunnelRelay"
 			]
 		}
 	]

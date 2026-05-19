@@ -24,7 +24,11 @@
 // `bash` přijde s Cloudflare Containers v další iteraci.
 
 import { quotaCheck, quotaBump, quotaIdent, quotaLimits, quotaRead } from './quota.js';
-import { handlePair, handleClaim, handleMachines, handleRevoke } from './tunnel.js';
+import {
+  handlePair, handleClaim, handleMachines, handleRevoke,
+  handleAgentConnect, handleBrowserConnect,
+} from './tunnel.js';
+export { TunnelRelay } from './tunnel-relay.js';
 import { DurableObject } from 'cloudflare:workers';
 
 // Container binding pro skutečný bash (Cloudflare Containers).
@@ -117,6 +121,11 @@ async function handleApi(request, env, url) {
   if (url.pathname === '/api/tunnel/claim' && request.method === 'POST') {
     return handleClaim(request, env);
   }
+  // Agent WS — vlastní auth přes agent token v ?token= (validuje se proti
+  // KV agent:<hash>, žádný RUNNER_SECRET).
+  if (url.pathname === '/api/tunnel/agent') {
+    return handleAgentConnect(request, env, url);
+  }
   if (url.pathname.startsWith('/api/tunnel/')) {
     if (!env.RUNNER_SECRET) {
       return new Response('RUNNER_SECRET není nastaven', { status: 503 });
@@ -130,6 +139,9 @@ async function handleApi(request, env, url) {
     }
     if (url.pathname === '/api/tunnel/machines' && request.method === 'GET') {
       return handleMachines(request, env, token);
+    }
+    if (url.pathname === '/api/tunnel/browser') {
+      return handleBrowserConnect(request, env, url, env.RUNNER_SECRET);
     }
     // DELETE /api/tunnel/machine/<id>
     const m = url.pathname.match(/^\/api\/tunnel\/machine\/([A-Za-z0-9_-]+)$/);

@@ -9,7 +9,7 @@ import { SCRIPT_RUNNERS } from './shell.js';
 import {
   ciGetToken, ciSetToken, ciGetEndpoint, ciSetEndpoint,
   ciHealth, ciVersion, ciQuota, ciStartRun,
-  ciTunnelPair, ciTunnelClaim, ciTunnelMachines, ciTunnelRevoke,
+  ciTunnelPair, ciTunnelClaim, ciTunnelMachines, ciTunnelRevoke, ciTunnelStartRun,
 } from './ci-client.js';
 
 function fmtCwd(cwd) {
@@ -21,10 +21,12 @@ function fmtCwd(cwd) {
 async function ciTunnelCmd(args, session, io) {
   const sub = args[0];
   if (!sub || sub === 'help') {
-    io.stdout('ci tunnel pair [label]       vytvoř 6-mistny kód pro nový stroj (TTL 5 min)');
-    io.stdout('ci tunnel claim <kód> <jméno>  agent flow — vymění kód za long-lived token');
-    io.stdout('ci tunnel machines            seznam spárovaných strojů');
-    io.stdout('ci tunnel revoke <machineId>  odebrat stroj a invalidovat jeho token');
+    io.stdout('ci tunnel pair [label]              vytvoř 6-mistny kód pro nový stroj (TTL 5 min)');
+    io.stdout('ci tunnel claim <kód> <jméno>       agent flow — vymění kód za long-lived token');
+    io.stdout('ci tunnel machines                  seznam spárovaných strojů');
+    io.stdout('ci tunnel revoke <machineId>        odebrat stroj a invalidovat jeho token');
+    io.stdout('ci tunnel run <machineId> -c "…"    spustit příkaz na vzdáleném stroji přes agenta');
+    io.stdout('ci tunnel run <machineId> <skript>  spustit lokální .sh přes agenta');
     return 0;
   }
   if (sub === 'pair') {
@@ -72,6 +74,42 @@ async function ciTunnelCmd(args, session, io) {
       io.stdout(`odebráno: ${args[1]}`);
       return 0;
     } catch (e) { io.stderr('ci tunnel revoke: ' + (e.message || e)); return 1; }
+  }
+  if (sub === 'run') {
+    const machineId = args[1];
+    if (!machineId) { io.stderr('ci tunnel run: čeká <machineId>'); return 2; }
+    let script;
+    if (args[2] === '-c') {
+      script = args.slice(3).join(' ');
+      if (!script) { io.stderr('ci tunnel run -c: chybí příkaz'); return 2; }
+    } else {
+      if (!args[2]) { io.stderr('ci tunnel run: čeká -c "<…>" nebo cestu ke .sh'); return 2; }
+      const p = resolvePath(session.cwd, args[2]);
+      const s = stat(p);
+      if (!s) { io.stderr(`ci tunnel run: ${args[2]}: neexistuje`); return 1; }
+      if (s.type !== 'file') { io.stderr(`ci tunnel run: ${args[2]}: není soubor`); return 1; }
+      const text = await readFile(p);
+      if (text == null) { io.stderr(`ci tunnel run: ${args[2]}: nelze přečíst`); return 1; }
+      script = text;
+    }
+    let handle;
+    try {
+      handle = ciTunnelStartRun(machineId, script, {
+        onMessage: (m) => {
+          if (m.type === 'stdout') io.stdout(m.line);
+          else if (m.type === 'stderr') io.stderr(m.line);
+          else if (m.type === 'system') {
+            if (m.event === 'agent_offline') io.stderr('tunnel: ' + (m.message || 'agent není připojený'));
+            else if (m.event === 'agent_disconnected') io.stderr('tunnel: agent se odpojil během runu');
+            else if (m.event === 'agent_connected') {/* tichá zpráva, run může pokračovat */}
+            else io.stderr(`tunnel: ${m.event}`);
+          }
+        },
+        onError: (e) => io.stderr('tunnel WS: ' + (e && e.message ? e.message : 'connection failed')),
+      });
+    } catch (e) { io.stderr('ci tunnel run: ' + (e.message || e)); return 1; }
+    const code = await handle.wait();
+    return typeof code === 'number' ? code : 0;
   }
   io.stderr(`ci tunnel: neznámý subcommand "${sub}". Zkuste \`ci tunnel help\`.`);
   return 2;

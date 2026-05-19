@@ -12,6 +12,7 @@
 // Limity: jeden user (= jeden token-hash) může mít max 8 spárovaných strojů.
 
 import { quotaIdent } from './quota.js';
+export { TunnelRelay } from './tunnel-relay.js';
 
 const PAIR_CODE_LEN = 6;
 const PAIR_TTL_S = 300;         // 5 min
@@ -50,6 +51,9 @@ async function hashHex(text) {
   for (let i = 0; i < 16; i++) hex += arr[i].toString(16).padStart(2, '0');
   return hex;
 }
+
+// pro WS handlery
+export { hashHex as tunnelHashHex };
 
 function uuid() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -201,4 +205,67 @@ export async function handleRevoke(request, env, token, machineId) {
   const list = await readMachinesIndex(env, ownerHash);
   await writeMachinesIndex(env, ownerHash, list.filter((m) => m.id !== machineId));
   return jsonResp({ revoked: machineId });
+}
+
+// --- WebSocket connection points (iterace 10b) ----------------------------
+
+// GET /api/tunnel/agent?token=<agentToken>  (Upgrade: websocket)
+// Agent z vlastního stroje. Validuje token přes agent:<hash> v KV,
+// najde machineId a připojí na DO instance pro daný stroj jako role=agent.
+export async function handleAgentConnect(request, env, url) {
+  if (!env.TUNNEL_RELAY) {
+    return new Response('TUNNEL_RELAY binding chybí (DO nenasazený)', { status: 503 });
+  }
+  if (request.headers.get('Upgrade') !== 'websocket') {
+    return new Response('expected ws upgrade', { status: 426 });
+  }
+  const token = url.searchParams.get('token') || '';
+  if (!token) return new Response('missing token', { status: 401 });
+  const tokenHash = await hashHex(token);
+  const raw = await env.RUNNER_QUOTA.get(`agent:${tokenHash}`);
+  if (!raw) return new Response('invalid agent token', { status: 401 });
+  let info;
+  try { info = JSON.parse(raw); } catch { return new Response('corrupt', { status: 500 }); }
+  if (!info.machineId) return new Response('corrupt', { status: 500 });
+
+  const id = env.TUNNEL_RELAY.idFromName(info.machineId);
+  const stub = env.TUNNEL_RELAY.get(id);
+  // pass-through s parametrem role=agent
+  const tunnelReq = new Request(`http://relay/?role=agent`, {
+    method: 'GET',
+    headers: request.headers,
+  });
+  return stub.fetch(tunnelReq);
+}
+
+// GET /api/tunnel/browser?machine=<id>&token=<RUNNER_SECRET>  (Upgrade: ws)
+// Browser strana — auth přes RUNNER_SECRET, ověř ownership machine.
+export async function handleBrowserConnect(request, env, url, runnerSecret) {
+  if (!env.TUNNEL_RELAY) {
+    return new Response('TUNNEL_RELAY binding chybí (DO nenasazený)', { status: 503 });
+  }
+  if (request.headers.get('Upgrade') !== 'websocket') {
+    return new Response('expected ws upgrade', { status: 426 });
+  }
+  const machineId = url.searchParams.get('machine') || '';
+  const token = url.searchParams.get('token') || '';
+  if (!machineId) return new Response('missing machine', { status: 400 });
+  if (token !== runnerSecret) return new Response('unauthorized', { status: 401 });
+
+  const rawMachine = await env.RUNNER_QUOTA.get(`machine:${machineId}`);
+  if (!rawMachine) return new Response('machine not found', { status: 404 });
+  let machine;
+  try { machine = JSON.parse(rawMachine); } catch { return new Response('corrupt', { status: 500 }); }
+  const ownerHash = await quotaIdent(token);
+  if (machine.ownerHash !== ownerHash) {
+    return new Response('not your machine', { status: 403 });
+  }
+
+  const id = env.TUNNEL_RELAY.idFromName(machineId);
+  const stub = env.TUNNEL_RELAY.get(id);
+  const tunnelReq = new Request(`http://relay/?role=browser`, {
+    method: 'GET',
+    headers: request.headers,
+  });
+  return stub.fetch(tunnelReq);
 }
