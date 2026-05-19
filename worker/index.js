@@ -80,17 +80,28 @@ export default {
 
 async function handleApi(request, env, url) {
   const origin = request.headers.get('Origin');
-  // Origin check — same-origin (no Origin header) i allowlist. Strict pro
-  // všechny `/api/*` routes; WS handshake taky Origin posílá.
-  if (origin && !ALLOWED_ORIGINS.has(origin)) {
-    return new Response('origin nepovolený', { status: 403 });
+  // Origin check: same-origin (Origin host = request host) vždy OK; jinak musí
+  // být v allowlistu. Bez Origin (curl, server-to-server) propustíme — auth
+  // přes RUNNER_SECRET stejně chrání citlivé routy.
+  if (origin) {
+    let sameOrigin = false;
+    try { sameOrigin = new URL(origin).host === url.host; } catch {}
+    if (!sameOrigin && !ALLOWED_ORIGINS.has(origin)) {
+      return new Response('origin nepovolený', { status: 403 });
+    }
   }
 
   if (url.pathname === '/api/health') {
     return json({ ok: true, ts: Date.now() });
   }
   if (url.pathname === '/api/version') {
-    return json({ worker: 'fakan-cz', runner: 'mock', version: 1 });
+    return json({
+      worker: 'fakan-cz',
+      runner: pickRunner(env),
+      runnerRequested: String(env.RUNNER_IMPL || 'mock'),
+      containerBound: !!env.SHELL,
+      version: 1,
+    });
   }
   if (url.pathname === '/api/quota') {
     return handleQuota(request, env, url);

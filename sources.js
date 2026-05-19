@@ -2285,6 +2285,45 @@ function showHelpDialog() {
           <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td><td>otevřít aktuální focus jako follower preview</td></tr>
         </table>
 
+        <h3>Terminál</h3>
+        <p>
+          Plnohodnotný shell přímo v prohlížeči — pohyb po zdroji, čtení i zápis souborů
+          (přes overlay, publish stávajícím tlačítkem), spouštění <code>.sh</code> skriptů.
+          Každý terminál je vlastní panel, otevřete jich kolik chcete.
+        </p>
+        <table class="help-dialog__keys">
+          <tr><td><kbd>${mod}</kbd>+<kbd>T</kbd></td><td>otevřít nový terminál</td></tr>
+          <tr><td>ve vimu <kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>suspend editoru → skok do terminálu (jako bash)</td></tr>
+          <tr><td>v terminálu <code>fg</code></td><td>návrat do suspendovaného editoru</td></tr>
+          <tr><td>v terminálu <kbd>↑</kbd> / <kbd>↓</kbd></td><td>historie (sdílená napříč terminály a sessions)</td></tr>
+          <tr><td>v terminálu <kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>clear obrazovky</td></tr>
+          <tr><td>v terminálu <kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>zruš rozepsaný řádek</td></tr>
+        </table>
+        <p>Vestavěné příkazy: <code>pwd</code>, <code>cd</code>, <code>ls</code>, <code>cat</code>,
+        <code>echo</code>, <code>head</code>, <code>tail</code>, <code>wc</code>,
+        <code>mkdir</code>, <code>touch</code>, <code>rm</code>, <code>cp</code>, <code>mv</code>,
+        <code>grep</code>, <code>find</code>, <code>history</code>, <code>alias</code>,
+        <code>export</code>, <code>env</code>, <code>bash</code>, <code>source</code>,
+        <code>clear</code>, <code>exit</code>, <code>help</code>.
+        Plus syntaxe shellu — roury <code>|</code>, redirekce <code>&gt;</code> <code>&gt;&gt;</code> <code>&lt;</code>,
+        operátory <code>&amp;&amp;</code> <code>||</code> <code>;</code>, proměnné <code>$VAR</code>,
+        globy <code>*.md</code>, bloky <code>for</code>/<code>if</code>/<code>while</code>.</p>
+        <p>Fakan-specifické příkazy proti vlastnímu UI: <code>open &lt;cesta&gt;</code>,
+        <code>vim &lt;cesta&gt;</code>, <code>preview &lt;cesta&gt;</code>,
+        <code>dock left|right|top|bottom|full</code>, <code>panels</code>, <code>recenter</code>.</p>
+        <p>Soubor <code>~/.fakanrc</code> se auto-sourcne při startu každého terminálu —
+        místo na aliasy, prompt, <code>export</code> proměnných.</p>
+
+        <h3>CI runner (Cloudflare)</h3>
+        <p>
+          <code>ci run script.sh</code> nebo <code>ci run -c "echo ahoj"</code> pošle skript
+          do Cloudflare Workeru, který ho spustí v ephemeral kontejneru (Alpine + bash +
+          coreutils + curl + jq + git) a výstup streamuje zpět do terminálu. Vyžaduje
+          per-token autorizaci přes <code>ci token &lt;secret&gt;</code> (token musí odpovídat
+          <code>RUNNER_SECRET</code> na Workeru). Status: <code>ci health</code>,
+          <code>ci version</code>, denní využití: <code>ci quota</code>.
+        </p>
+
         <h3>Zdroje dat</h3>
         <p>
           Tlačítkem v levém horním rohu („Zdroj“) přepínáte odkud fakan čte strom:
