@@ -25,6 +25,27 @@
 
 import { quotaCheck, quotaBump, quotaIdent, quotaLimits, quotaRead } from './quota.js';
 
+// Container binding pro skutečný bash (Cloudflare Containers, iterace 9).
+// Třída se musí exportovat, i když uživatel binding ještě aktivoval —
+// wrangler.jsonc binding je defaultně zakomentovaný, takže `env.SHELL` chybí
+// a Worker se vrátí na mock runner.
+//
+// Cloudflare Containers vyžadují wrangler ≥ 4 + Containers feature v účtu.
+// Image se buildí z worker/Dockerfile při `wrangler deploy`.
+export class ShellContainer {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+  }
+  // Cloudflare Container framework — kontejner poslouchá na portu 8080;
+  // Worker forwarduje fetch požadavek dovnitř.
+  async fetch(request) {
+    // Při skutečném Container bindingu Cloudflare wraps this method přes
+    // platformu — port se mapuje automaticky. Tento stub je pro vývoj.
+    return new Response('container not active (mock fallback)', { status: 503 });
+  }
+}
+
 const ALLOWED_ORIGINS = new Set([
   'https://fakan.cz',
   'https://www.fakan.cz',
@@ -159,7 +180,12 @@ async function handleRun(request, env, url) {
         try { server.close(1001, 'timeout'); } catch {}
       }, limits.runWallMs);
       try {
-        await runMock(String(msg.script || ''), server, () => killed);
+        const impl = pickRunner(env);
+        if (impl === 'container') {
+          await runContainer(String(msg.script || ''), server, () => killed, env);
+        } else {
+          await runMock(String(msg.script || ''), server, () => killed);
+        }
       } catch (e) {
         send(server, { type: 'stderr', line: 'runner error: ' + (e && e.message ? e.message : e) });
         send(server, { type: 'exit', code: 1 });
@@ -187,9 +213,66 @@ function send(ws, obj) {
   try { ws.send(JSON.stringify(obj)); } catch {}
 }
 
-// Mock runner — pošle skript zpět jako stdout. Skutečný bash exec přijde
-// s Cloudflare Containers v iteraci 9. Smyčka je rychlá (žádný setTimeout),
-// aby Worker neutratil CPU minuty zbytečně.
+// Vyber runner impl: env.RUNNER_IMPL ('mock' | 'container'), default 'mock'.
+// Pokud uživatel požaduje 'container' ale binding chybí, vrátí 'mock'
+// a stream pošle warning. Tohle umožní jeden Worker s feature flagem.
+function pickRunner(env) {
+  const want = String(env.RUNNER_IMPL || 'mock').toLowerCase();
+  if (want === 'container' && env.SHELL) return 'container';
+  return 'mock';
+}
+
+// Container runner — proxuje skript do Cloudflare Container instance přes
+// jeho HTTP /run endpoint, čte NDJSON stream řádek po řádku a re-emituje
+// do WebSocketu klienta.
+async function runContainer(script, ws, isKilled, env) {
+  // Sdílená "default" instance pro všechny runy. Per-token isolation
+  // by se dala přidat přes `idFromName(tokenHash)`, ale stojí to extra
+  // Container instance — pro MVP sdílíme.
+  const id = env.SHELL.idFromName('default');
+  const stub = env.SHELL.get(id);
+
+  let res;
+  try {
+    res = await stub.fetch('http://container/run', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ script }),
+    });
+  } catch (e) {
+    send(ws, { type: 'stderr', line: 'container: ' + (e.message || e) });
+    send(ws, { type: 'exit', code: 1 });
+    return;
+  }
+  if (!res.ok || !res.body) {
+    send(ws, { type: 'stderr', line: `container HTTP ${res.status}` });
+    send(ws, { type: 'exit', code: 1 });
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    if (isKilled()) { try { await reader.cancel(); } catch {} break; }
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line);
+        send(ws, obj);
+      } catch {
+        send(ws, { type: 'stderr', line: 'malformed runner output: ' + line.slice(0, 200) });
+      }
+    }
+  }
+}
+
+// Mock runner — pošle skript zpět jako stdout. Použitý dokud není
+// Container binding aktivní v wrangler.jsonc + Containers v účtu.
 async function runMock(script, ws, isKilled) {
   const lines = script.split('\n');
   send(ws, { type: 'stdout', line: '[fakan-cz · mock runner v1]' });

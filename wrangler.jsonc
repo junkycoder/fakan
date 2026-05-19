@@ -29,6 +29,29 @@
   // "vars": {
   //   "MAX_RUNS_PER_DAY": "100",
   //   "MAX_COMPUTE_MS_PER_DAY": "3600000",
-  //   "MAX_RUN_WALL_MS": "300000"
+  //   "MAX_RUN_WALL_MS": "300000",
+  //   "RUNNER_IMPL": "container"
   // }
+  //
+  // Cloudflare Containers (iterace 9) — skutečný bash místo mocku.
+  // Vyžaduje Containers feature v účtu (open beta) a wrangler ≥ 4.x.
+  // Obraz se buildí z worker/Dockerfile při `wrangler deploy`.
+  // Po odkomentování níže nastav RUNNER_IMPL=container ve `vars` výše.
+  //
+  // "containers": [
+  //   {
+  //     "class_name": "ShellContainer",
+  //     "image": "./worker/Dockerfile",
+  //     "max_instances": 3,
+  //     "instance_type": "basic"
+  //   }
+  // ],
+  // "durable_objects": {
+  //   "bindings": [
+  //     { "name": "SHELL", "class_name": "ShellContainer" }
+  //   ]
+  // },
+  // "migrations": [
+  //   { "tag": "v1", "new_sqlite_classes": ["ShellContainer"] }
+  // ]
 }

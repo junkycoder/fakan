@@ -39,8 +39,49 @@ ci run -c "echo ahoj"
 
 ## Runner
 
-V této iteraci je mock — server jen echo skript zpět jako stdout. Skutečný
-`bash` exec přijde s Cloudflare Containers v další iteraci.
+Worker podporuje dvě implementace runneru, výběr přes env var
+`RUNNER_IMPL`:
+
+- `mock` (default) — server echo skript zpět jako stdout, žádný shell.
+  Užitečné pro vyzkoušení tunelu a UI bez nasazení Containers.
+- `container` — Cloudflare Container s Alpine + Node + bash. Skutečný
+  shell exec, NDJSON stream přes Worker. Vyžaduje Containers v účtu.
+
+### Aktivace containeru (iterace 9)
+
+1. **Containers feature v účtu** — open beta, povolení v Cloudflare
+   dashboardu (Workers & Pages → Containers). Vyžaduje wrangler ≥ 4.x.
+
+2. **Odkomentuj v `wrangler.jsonc`** sekce `containers`, `durable_objects`,
+   `migrations` a vlož `"RUNNER_IMPL": "container"` do `vars`.
+
+3. **Build image** se stane automaticky během `wrangler deploy`:
+   `worker/Dockerfile` → Alpine + Node 22 + bash + coreutils + curl + jq + git.
+
+4. **Container runtime** (`worker/runner.js`) — minimální HTTP server na
+   :8080, route `POST /run` body `{ script }`, vrátí NDJSON stream:
+   `{type:"stdout"|"stderr",line}` až `{type:"exit",code}`. Limity v
+   env vars: `MAX_RUNTIME_MS` (default 5 min), `MAX_OUTPUT_BYTES` (1 MB).
+
+5. **Worker proxa**: `runContainer()` v `worker/index.js` posílá script
+   do Container instance přes Durable Object binding `SHELL`, streamuje
+   NDJSON zpět do WebSocketu klienta řádek po řádku.
+
+### Fallback
+
+Pokud `env.SHELL` chybí (Containers neaktivní) a uživatel požádá
+`RUNNER_IMPL=container`, Worker tichošlapě vrátí mock. Nikdy nedělá hard
+fail — uživatel uvidí jen mockový výstup.
+
+### Bezpečnost containeru
+
+- nonroot user (uid 1001 fakan)
+- HOME=/tmp, čistý PATH
+- `child.kill()` po 5 min (`MAX_RUNTIME_MS`)
+- Output cap 1 MB (`MAX_OUTPUT_BYTES`)
+- Klient disconnect → SIGTERM child
+- Žádná persistent storage v containeru — vše ephemeral; pro výsledky
+  použij `ci` redirekci do localního FS terminálu (iterace 10).
 
 ## Quota (iterace 8)
 
