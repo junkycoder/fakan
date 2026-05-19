@@ -131,6 +131,35 @@ const IFRAME_HEAD_INJECT = `<style>html{height:100% !important;overflow:auto !im
       ctrl: !!e.ctrlKey,
     }, '*');
   }, true);
+
+  // Forward shell zkratek nahoru. Iframe má sandbox bez allow-same-origin,
+  // takže parent jinak keydown nedostane. Forwardujeme jen klávesy, které
+  // shell skutečně řeší — ne každé písmeno, abychom nelámali psaní v inputech.
+  document.addEventListener('keydown', function(e){
+    var t = e.target;
+    var tag = t && t.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable)) return;
+    var k = e.key;
+    var mod = e.metaKey || e.ctrlKey;
+    var isShellKey =
+      k === 'Escape' ||
+      (e.shiftKey && (k === 'H' || k === 'J' || k === 'K' || k === 'L')) ||
+      (mod && (k === 'k' || k === 'K')) ||
+      (mod && e.shiftKey) ||
+      (mod && (k === 'ArrowLeft' || k === 'ArrowRight')) ||
+      k === '0' || k === '[' || k === ']';
+    if (!isShellKey) return;
+    e.preventDefault();
+    parent.postMessage({
+      type: 'fakan-key',
+      key: k,
+      code: e.code,
+      shift: !!e.shiftKey,
+      meta: !!e.metaKey,
+      ctrl: !!e.ctrlKey,
+      alt: !!e.altKey,
+    }, '*');
+  }, true);
 })();
 </script>`;
 
@@ -209,16 +238,33 @@ function installIframeMessageListener() {
   window.addEventListener('message', (e) => {
     if (!allowedOrigins.has(e.origin)) return;
     const d = e.data;
-    if (!d || d.type !== 'fakan-link') return;
+    if (!d) return;
     const panels = allPanels();
     const panel = panels.find((p) => {
       const ifr = p.element.querySelector('iframe.iframe-preview');
       return ifr && ifr.contentWindow === e.source;
     });
     if (!panel) return;
-    openByHref(d.href, panel.node.path || '', {
-      shift: !!d.shift, meta: !!d.meta, ctrl: !!d.ctrl,
-    });
+    if (d.type === 'fakan-link') {
+      openByHref(d.href, panel.node.path || '', {
+        shift: !!d.shift, meta: !!d.meta, ctrl: !!d.ctrl,
+      });
+      return;
+    }
+    if (d.type === 'fakan-key') {
+      // Iframe je active panel — než přehrajeme keydown, ujistíme se, že shell
+      // ho považuje za aktivní (kliknutí do iframe focus přebírá, ale activePanel
+      // by měl být ten správný; pokud ne, drag-na-edge by selhal).
+      setActive(panel);
+      // Re-dispatch jako skutečný KeyboardEvent — keyboard.js handler ho zachytí.
+      const ev = new KeyboardEvent('keydown', {
+        key: d.key, code: d.code,
+        shiftKey: !!d.shift, metaKey: !!d.meta, ctrlKey: !!d.ctrl, altKey: !!d.alt,
+        bubbles: true, cancelable: true,
+      });
+      window.dispatchEvent(ev);
+      return;
+    }
   });
 }
 

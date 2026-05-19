@@ -25,6 +25,13 @@ class SpaHandler(SimpleHTTPRequestHandler):
             self.path = '/index.html'
         return super().do_GET()
 
+    def end_headers(self):
+        # Dev only: zabraň ESM module cache, ať reload natáhne čerstvý JS/CSS.
+        # Bez tohohle Chrome drží *.js v paměti i přes Cmd+R a uvidíš starou verzi
+        # i po editaci souboru. Produkční Worker si cache headers řídí sám.
+        self.send_header('Cache-Control', 'no-store, must-revalidate')
+        super().end_headers()
+
     def log_message(self, fmt, *args):  # noqa: A003
         # tišší log: jen status code + path, bez stack timestampu
         sys.stderr.write(f"{self.command} {self.path} {args[1] if len(args) > 1 else ''}\n")
