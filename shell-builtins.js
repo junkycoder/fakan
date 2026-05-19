@@ -9,11 +9,72 @@ import { SCRIPT_RUNNERS } from './shell.js';
 import {
   ciGetToken, ciSetToken, ciGetEndpoint, ciSetEndpoint,
   ciHealth, ciVersion, ciQuota, ciStartRun,
+  ciTunnelPair, ciTunnelClaim, ciTunnelMachines, ciTunnelRevoke,
 } from './ci-client.js';
 
 function fmtCwd(cwd) {
   const c = normalizeCwd(cwd);
   return c ? `~/${c}` : '~/';
+}
+
+// `ci tunnel` subcommand. Drží se mimo BUILTINS.ci aby help byl čitelný.
+async function ciTunnelCmd(args, session, io) {
+  const sub = args[0];
+  if (!sub || sub === 'help') {
+    io.stdout('ci tunnel pair [label]       vytvoř 6-mistny kód pro nový stroj (TTL 5 min)');
+    io.stdout('ci tunnel claim <kód> <jméno>  agent flow — vymění kód za long-lived token');
+    io.stdout('ci tunnel machines            seznam spárovaných strojů');
+    io.stdout('ci tunnel revoke <machineId>  odebrat stroj a invalidovat jeho token');
+    return 0;
+  }
+  if (sub === 'pair') {
+    try {
+      const label = args.slice(1).join(' ');
+      const r = await ciTunnelPair(label);
+      io.stdout(`Kód: ${r.code}`);
+      io.stdout(`Platnost: ${r.expiresInSeconds}s (do ${new Date(r.expiresAt).toLocaleTimeString()})`);
+      if (label) io.stdout(`Štítek: ${label}`);
+      io.stdout('');
+      io.stdout('Na cílovém stroji spusťte:');
+      io.stdout(`  fakan-agent pair ${r.code} "<jméno-stroje>"`);
+      return 0;
+    } catch (e) { io.stderr('ci tunnel pair: ' + (e.message || e)); return 1; }
+  }
+  if (sub === 'claim') {
+    if (!args[1]) { io.stderr('ci tunnel claim: čeká <kód> [jméno]'); return 2; }
+    const code = args[1];
+    const name = args.slice(2).join(' ') || 'unnamed';
+    try {
+      const r = await ciTunnelClaim(code, name);
+      io.stdout('Spárováno:');
+      io.stdout(`  machineId:  ${r.machineId}`);
+      io.stdout(`  agentToken: ${r.agentToken}`);
+      io.stdout('');
+      io.stdout('Token uložte na agentu (~/.fakan/agent.toml).');
+      return 0;
+    } catch (e) { io.stderr('ci tunnel claim: ' + (e.message || e)); return 1; }
+  }
+  if (sub === 'machines') {
+    try {
+      const r = await ciTunnelMachines();
+      if (!r.machines.length) { io.stdout('žádné spárované stroje'); return 0; }
+      for (const m of r.machines) {
+        const when = new Date(m.createdAt).toLocaleString();
+        io.stdout(`${m.id}  ${m.name.padEnd(20)} ${when}`);
+      }
+      return 0;
+    } catch (e) { io.stderr('ci tunnel machines: ' + (e.message || e)); return 1; }
+  }
+  if (sub === 'revoke') {
+    if (!args[1]) { io.stderr('ci tunnel revoke: čeká <machineId>'); return 2; }
+    try {
+      await ciTunnelRevoke(args[1]);
+      io.stdout(`odebráno: ${args[1]}`);
+      return 0;
+    } catch (e) { io.stderr('ci tunnel revoke: ' + (e.message || e)); return 1; }
+  }
+  io.stderr(`ci tunnel: neznámý subcommand "${sub}". Zkuste \`ci tunnel help\`.`);
+  return 2;
 }
 
 // Otevři uzel ze zdroje v panelu přes host callback (openMain/openPreview/openAsFollower).
@@ -408,6 +469,9 @@ export const BUILTINS = {
       io.stdout('ci health               ověř /api/health');
       io.stdout('ci version              info o runneru');
       io.stdout('ci quota                denní využití (runs, compute)');
+      io.stdout('ci tunnel pair          vytvoř kód pro spárování stroje (fáze 3)');
+      io.stdout('ci tunnel machines      seznam spárovaných strojů');
+      io.stdout('ci tunnel revoke <id>   odebrat stroj');
       return 0;
     }
 
@@ -454,6 +518,10 @@ export const BUILTINS = {
         io.stdout(`max wall: ${Math.round(l.runWallMs / 1000)}s per run`);
         return 0;
       } catch (e) { io.stderr('ci quota: ' + (e.message || e)); return 1; }
+    }
+
+    if (sub === 'tunnel') {
+      return await ciTunnelCmd(args.slice(1), session, io);
     }
 
     if (sub === 'run') {

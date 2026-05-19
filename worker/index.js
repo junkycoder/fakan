@@ -24,6 +24,7 @@
 // `bash` přijde s Cloudflare Containers v další iteraci.
 
 import { quotaCheck, quotaBump, quotaIdent, quotaLimits, quotaRead } from './quota.js';
+import { handlePair, handleClaim, handleMachines, handleRevoke } from './tunnel.js';
 import { DurableObject } from 'cloudflare:workers';
 
 // Container binding pro skutečný bash (Cloudflare Containers).
@@ -109,6 +110,34 @@ async function handleApi(request, env, url) {
   if (url.pathname === '/api/run') {
     return handleRun(request, env, url);
   }
+
+  // --- tunnel: pairing & machine registry (iterace 10a) --------------------
+  // Browser → auth přes RUNNER_SECRET v ?token=. Agent claim je no-auth (pair
+  // code sám je krátkodobý secret).
+  if (url.pathname === '/api/tunnel/claim' && request.method === 'POST') {
+    return handleClaim(request, env);
+  }
+  if (url.pathname.startsWith('/api/tunnel/')) {
+    if (!env.RUNNER_SECRET) {
+      return new Response('RUNNER_SECRET není nastaven', { status: 503 });
+    }
+    const token = url.searchParams.get('token') || '';
+    if (!constantTimeEqual(token, env.RUNNER_SECRET)) {
+      return new Response('unauthorized', { status: 401 });
+    }
+    if (url.pathname === '/api/tunnel/pair' && request.method === 'POST') {
+      return handlePair(request, env, token);
+    }
+    if (url.pathname === '/api/tunnel/machines' && request.method === 'GET') {
+      return handleMachines(request, env, token);
+    }
+    // DELETE /api/tunnel/machine/<id>
+    const m = url.pathname.match(/^\/api\/tunnel\/machine\/([A-Za-z0-9_-]+)$/);
+    if (m && request.method === 'DELETE') {
+      return handleRevoke(request, env, token, m[1]);
+    }
+  }
+
   return new Response('not found', { status: 404 });
 }
 

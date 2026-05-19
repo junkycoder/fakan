@@ -36,6 +36,26 @@ function endpointBase() {
   return location.origin;
 }
 
+// Robustní JSON parser pro Worker odpovědi — pokud server vrátí HTML (např.
+// 404 z lokálního Python http.serveru), nezhroutíme se na JSON parse error.
+async function readJsonOrText(res) {
+  const ct = res.headers.get('content-type') || '';
+  if (ct.includes('application/json')) {
+    try { return await res.json(); } catch (e) { return { error: 'invalid_json' }; }
+  }
+  return { error: 'non_json', sample: (await res.text()).slice(0, 80) };
+}
+
+function formatHttpError(res, body) {
+  if (body && body.reason) return body.reason;
+  if (body && body.error === 'non_json') {
+    return `HTTP ${res.status} (žádný JSON — endpoint pravděpodobně chybí; ` +
+      `pokud testujete proti lokálu, deployněte Worker přes \`make deploy\`)`;
+  }
+  if (body && body.error) return `${body.error} (HTTP ${res.status})`;
+  return `HTTP ${res.status}`;
+}
+
 function wsUrl(path, params = {}) {
   // http(s) → ws(s)
   const base = endpointBase().replace(/^http/i, 'ws');
@@ -64,6 +84,56 @@ export async function ciQuota() {
   const res = await fetch(u.toString(), { cache: 'no-store' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return await res.json();
+}
+
+// --- tunnel pairing & machines registry (fáze 3, iterace 10a) ---------------
+
+function tunnelUrl(path) {
+  const token = ciGetToken();
+  if (!token) throw new Error('chybí token');
+  const u = new URL(endpointBase() + path);
+  u.searchParams.set('token', token);
+  return u;
+}
+
+export async function ciTunnelPair(label = '') {
+  const u = tunnelUrl('/api/tunnel/pair');
+  const res = await fetch(u.toString(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ label }),
+  });
+  const j = await readJsonOrText(res);
+  if (!res.ok) throw new Error(formatHttpError(res, j));
+  return j;
+}
+
+export async function ciTunnelClaim(code, machineName) {
+  // No-auth — pair code is the secret. Pro debugging z UI.
+  const u = new URL(endpointBase() + '/api/tunnel/claim');
+  const res = await fetch(u.toString(), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, machineName }),
+  });
+  const j = await readJsonOrText(res);
+  if (!res.ok) throw new Error(formatHttpError(res, j));
+  return j;
+}
+
+export async function ciTunnelMachines() {
+  const u = tunnelUrl('/api/tunnel/machines');
+  const res = await fetch(u.toString(), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+export async function ciTunnelRevoke(machineId) {
+  const u = tunnelUrl('/api/tunnel/machine/' + encodeURIComponent(machineId));
+  const res = await fetch(u.toString(), { method: 'DELETE' });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(j.reason || j.error || `HTTP ${res.status}`);
+  return j;
 }
 
 // Spustí WS run. Callbacks: onMessage({type, line, code}), onError(err), onClose(ev).
