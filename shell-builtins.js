@@ -5,6 +5,7 @@ import {
   resolvePath, stat, readdir, readFile, exists, isDir, normalizeCwd,
   mkdir, mkdirP, touchFile, removePath, writeFile, copyFile, movePath,
 } from './shell-fs.js';
+import { SCRIPT_RUNNERS } from './shell.js';
 
 function fmtCwd(cwd) {
   const c = normalizeCwd(cwd);
@@ -152,9 +153,12 @@ export const BUILTINS = {
     io.stdout('Filtry:   grep (-i/-v/-n/-c)  find (-name/-type)');
     io.stdout('Roury:    cmd1 | cmd2  ·  cmd > file  ·  cmd >> file  ·  cmd < file');
     io.stdout('Logika:   cmd1 && cmd2  ·  cmd1 || cmd2  ·  cmd1 ; cmd2');
-    io.stdout('Proměnné: $VAR, ${VAR}, $? (poslední exit code)');
+    io.stdout('Proměnné: $VAR, ${VAR}, $? (poslední exit code)  ·  export VAR=val');
+    io.stdout('Skripty:  bash script.sh  ·  ./script.sh  ·  source script.sh');
+    io.stdout('Bloky:    for x in a b c; do …; done  ·  if cmd; then …; fi  ·  while');
+    io.stdout('Globs:    *.md  ·  blog/*.html');
     io.stdout('');
-    io.stdout('Brzy: .sh skripty (for/if), fakan příkazy (open, vim, dock).');
+    io.stdout('Brzy: fakan příkazy (open, vim, dock), .fakanrc auto-source.');
     return 0;
   },
 
@@ -170,6 +174,60 @@ export const BUILTINS = {
     const keys = Object.keys(session.env).sort();
     for (const k of keys) io.stdout(`${k}=${session.env[k]}`);
     return 0;
+  },
+
+  export(args, session, io) {
+    if (!args.length) {
+      const keys = Object.keys(session.env).sort();
+      for (const k of keys) io.stdout(`export ${k}=${session.env[k]}`);
+      return 0;
+    }
+    for (const a of args) {
+      const eq = a.indexOf('=');
+      if (eq < 0) {
+        // export NAME bez hodnoty = jen označení (no-op u nás)
+        continue;
+      }
+      const k = a.slice(0, eq);
+      const v = a.slice(eq + 1);
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) {
+        io.stderr(`export: neplatné jméno: ${k}`);
+        return 1;
+      }
+      session.env[k] = v;
+    }
+    return 0;
+  },
+
+  unset(args, session, io) {
+    for (const a of args) {
+      if (a in session.env) delete session.env[a];
+    }
+    return 0;
+  },
+
+  async bash(args, session, io) {
+    if (!args.length) {
+      io.stderr('bash: chybí skript');
+      return 2;
+    }
+    // -c "...": exec inline
+    if (args[0] === '-c') {
+      if (args.length < 2) { io.stderr('bash: -c čeká argument'); return 2; }
+      return await SCRIPT_RUNNERS.runScriptText(args[1], session, io);
+    }
+    const p = resolvePath(session.cwd, args[0]);
+    return await SCRIPT_RUNNERS.runScriptFile(p, args.slice(1), session, io);
+  },
+
+  async sh(args, session, io) {
+    return await BUILTINS.bash(args, session, io);
+  },
+
+  // source / . — totéž jako bash, ale konceptuálně "v aktuálním shellu". Naše
+  // implementace bash už env zachovává mezi voláními, takže source = bash.
+  async source(args, session, io) {
+    return await BUILTINS.bash(args, session, io);
   },
 
   mkdir(args, session, io) {
