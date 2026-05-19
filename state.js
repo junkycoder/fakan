@@ -131,6 +131,10 @@ export const state = {
   ghBaselineSha: new Map(),           // path -> git blob SHA z /git/trees
   ghBaselinePaths: new Set(),         // všechny cesty, které loader namountoval
   ghBaselineTruncated: false,         // true pokud GitHub tree byl truncated
+
+  // bash-style job control mezi vimem a terminálem: Ctrl+Z ve vimu pushne
+  // editorový panel sem (skryje ho), `fg` v terminálu vrátí poslední
+  jobStack: [],
 };
 
 // --- git blob SHA -----------------------------------------------------------

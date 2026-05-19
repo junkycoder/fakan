@@ -157,6 +157,7 @@ export const BUILTINS = {
     io.stdout('Skripty:  bash script.sh  ·  ./script.sh  ·  source script.sh');
     io.stdout('Bloky:    for x in a b c; do …; done  ·  if cmd; then …; fi  ·  while');
     io.stdout('Globs:    *.md  ·  blog/*.html');
+    io.stdout('Joby:     ve vimu Ctrl+Z = suspend  ·  fg = návrat  ·  jobs');
     io.stdout('');
     io.stdout('Brzy: fakan příkazy (open, vim, dock), .fakanrc auto-source.');
     return 0;
@@ -228,6 +229,34 @@ export const BUILTINS = {
   // implementace bash už env zachovává mezi voláními, takže source = bash.
   async source(args, session, io) {
     return await BUILTINS.bash(args, session, io);
+  },
+
+  // fg — resume nejnovějšího suspendovaného editoru (bash job control analogie).
+  // Po Ctrl+Z ve vimu se editor panel schoval; `fg` ho vrátí.
+  fg(args, session, io) {
+    const fn = session.host && session.host.resumeLastEditor;
+    if (!fn) {
+      io.stderr('fg: žádné suspendované úlohy');
+      return 1;
+    }
+    const ok = fn();
+    if (!ok) {
+      io.stderr('fg: žádné suspendované úlohy');
+      return 1;
+    }
+    return 0;
+  },
+
+  jobs(args, session, io) {
+    const list = session.host && session.host.listJobs ? session.host.listJobs() : [];
+    if (!list.length) {
+      io.stdout('žádné suspendované úlohy');
+      return 0;
+    }
+    list.forEach((job, i) => {
+      io.stdout(`[${list.length - i}]+  Stopped  vim ${job}`);
+    });
+    return 0;
   },
 
   mkdir(args, session, io) {

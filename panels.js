@@ -731,6 +731,7 @@ function mountEditorIfNeeded(panel, bodyEl) {
       saveEditOverride(node, text);
     },
     onClose: () => closePanel(panel),
+    onSuspend: () => suspendEditorPanel(panel),
   });
   panel.editor = handle;
   // dej editoru focus, aby vim klávesy fungovaly hned —
@@ -755,6 +756,10 @@ function mountTerminalIfNeeded(panel, bodyEl) {
     id: node.path,
     cwd: node.cwd || '',
     onClose: () => closePanel(panel),
+    resumeLastEditor,
+    listJobs: () => state.jobStack
+      .filter((p) => p && p.element && p.element.isConnected)
+      .map((p) => p.node?.name || p.node?.path || '?'),
   });
   panel.terminal = handle;
 }
@@ -978,6 +983,46 @@ export function closeAllPreviews() {
 export function openMainOnly(node) {
   closeAllPreviews();
   openMain(node);
+}
+
+// --- job control: Ctrl+Z ↔ fg ---------------------------------------------
+// Ctrl+Z ve vim editoru schová jeho panel (display: none) a pushne ho do
+// state.jobStack. `fg` v terminálu nejnovější popne a oživí. Pokud uživatel
+// schovaný panel zavře jinak (např. přes nav nebo Cmd+W na něj nelze, protože
+// není aktivní), drží se mrtvý odkaz — resumeLastEditor přeskakuje na další.
+
+export function suspendEditorPanel(editorPanel) {
+  if (!editorPanel) return;
+  state.jobStack.push(editorPanel);
+  editorPanel.element.style.display = 'none';
+  // přepni focus na otevřený terminál; pokud žádný, otevři nový
+  let term = null;
+  for (const p of allPanels()) {
+    if (p.node?.type === 'terminal' && p.element.style.display !== 'none') {
+      term = p; break;
+    }
+  }
+  if (!term) term = openTerminalPanel();
+  bringToFront(term.element);
+  setActive(term);
+  if (term.terminal && term.terminal.focus) term.terminal.focus();
+  refreshOpenLabels();
+  if (state.panelNavListener) state.panelNavListener();
+}
+
+export function resumeLastEditor() {
+  while (state.jobStack.length) {
+    const panel = state.jobStack.pop();
+    if (!panel || !panel.element || !panel.element.isConnected) continue;
+    panel.element.style.display = '';
+    bringToFront(panel.element);
+    setActive(panel);
+    if (panel.editor && panel.editor.focus) panel.editor.focus();
+    refreshOpenLabels();
+    if (state.panelNavListener) state.panelNavListener();
+    return true;
+  }
+  return false;
 }
 
 // Terminálové panely jsou virtuální uzly s unikátní cestou `__term__/<n>`,

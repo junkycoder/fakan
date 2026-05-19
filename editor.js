@@ -1358,6 +1358,16 @@ export function mountEditor(host, opts = {}) {
       return;
     }
 
+    // Ctrl+Z: suspend → skok do terminálu (bash-job-control analogie).
+    // Cmd+Z se nezachycuje, ať uživateli zůstává systemový undo refleksně volný
+    // (přebito i normal mode `u` undo). Editorový panel se jen schová, state
+    // i obsah zůstávají — `fg` v terminálu ho oživí.
+    if (e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+      e.preventDefault(); e.stopPropagation();
+      if (opts.onSuspend) opts.onSuspend();
+      return;
+    }
+
     let handled = false;
     if (state.mode === 'normal') handled = handleNormal(e);
     else if (state.mode === 'insert') handled = handleInsert(e);

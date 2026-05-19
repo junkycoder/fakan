@@ -30,6 +30,12 @@ export function mountTerminal(host, opts = {}) {
     cwd: opts.cwd || '',
     env: opts.env,
   });
+  // host hooky — fg, atd. — žijí v session.host aby je shell-builtins
+  // mohly volat bez kruhové závislosti na panels.js.
+  session.host = {
+    resumeLastEditor: opts.resumeLastEditor || null,
+    listJobs: opts.listJobs || null,
+  };
 
   const root = document.createElement('div');
   root.className = 'term';
