@@ -2,6 +2,7 @@
 // + spodní navigace (renderNav).
 
 import { mountEditor } from './editor.js';
+import { mountTerminal } from './terminal.js';
 import {
   state,
   PANEL_CASCADE,
@@ -94,6 +95,7 @@ function renderMarkdown(md) {
 // source — uživatel přepne playem ručně.
 function defaultPanelMode(node) {
   if (!node) return 'source';
+  if (node.type === 'terminal') return 'source';
   if (node.kind === 'web') return 'rendered';
   if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
   // .md a .html otevíráme v rendered módu i bez načteného obsahu —
@@ -288,6 +290,7 @@ export function setActive(panel) {
 }
 
 function pathLabel(node) {
+  if (node.type === 'terminal') return `~/${node.name}`;
   const p = node.path || '';
   if (!p) return '~/';
   // dir → trailing slash; root je '~/'
@@ -295,6 +298,9 @@ function pathLabel(node) {
 }
 
 function sourceBody(node) {
+  if (node.type === 'terminal') {
+    return `<div class="terminal-mount" data-terminal-mount></div>`;
+  }
   if (node.type === 'root') {
     return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
   }
@@ -377,6 +383,7 @@ function dirIndexHtml(node) {
 }
 
 function canBuild(node) {
+  if (node.type === 'terminal') return false;
   if (node.kind === 'web') return true;
   // MD a HTML jsou vždy buildable — pokud chybí obsah, panel ho lazy fetchne.
   if (node.kind === 'md' && (node.content || node.path)) return true;
@@ -481,9 +488,11 @@ function rerenderPanelBody(panel) {
   const bodyEl = panel.element.querySelector('[data-panel-body]');
   if (!bodyEl) return;
   destroyEditor(panel);
+  destroyTerminal(panel);
   revokePanelUrls(panel);
   bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
   mountEditorIfNeeded(panel, bodyEl);
+  mountTerminalIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
 }
 
@@ -738,6 +747,25 @@ function destroyEditor(panel) {
   }
 }
 
+function mountTerminalIfNeeded(panel, bodyEl) {
+  const host = bodyEl.querySelector('[data-terminal-mount]');
+  if (!host) return;
+  const node = panel.node;
+  const handle = mountTerminal(host, {
+    id: node.path,
+    cwd: node.cwd || '',
+    onClose: () => closePanel(panel),
+  });
+  panel.terminal = handle;
+}
+
+function destroyTerminal(panel) {
+  if (panel.terminal) {
+    try { panel.terminal.destroy(); } catch {}
+    panel.terminal = null;
+  }
+}
+
 function setupPanelInteractions(panel) {
   const el = panel.element;
   const head = el.querySelector('[data-panel-head]');
@@ -747,6 +775,7 @@ function setupPanelInteractions(panel) {
   const bodyEl = el.querySelector('[data-panel-body]');
 
   mountEditorIfNeeded(panel, bodyEl);
+  mountTerminalIfNeeded(panel, bodyEl);
   mountMediaIfNeeded(panel, bodyEl);
   installIframeMessageListener();
   closeBtn.addEventListener('click', () => closePanel(panel));
@@ -951,6 +980,22 @@ export function openMainOnly(node) {
   openMain(node);
 }
 
+// Terminálové panely jsou virtuální uzly s unikátní cestou `__term__/<n>`,
+// aby nekolidovaly se zdrojem. Otevírají se jako preview (paralelně, nezavřou main).
+let _terminalCounter = 0;
+export function openTerminalPanel(opts = {}) {
+  _terminalCounter++;
+  const n = _terminalCounter;
+  const node = {
+    type: 'terminal',
+    name: `term-${n}`,
+    filename: `term-${n}`,
+    path: `__term__/${n}`,
+    cwd: opts.cwd || '',
+  };
+  return openPreview(node);
+}
+
 // Default open: po načtení zdroje nebo bootu otevři kořenový index.html,
 // pokud existuje a nic jiného není otevřené. URL musí být `/` — jinak by
 // se přepsal deep link (`/foo.md`, `/projects/`) z fresh boot, kde mount
@@ -1077,6 +1122,7 @@ function openSiblingFiles(node) {
 
 export function closePanel(panel) {
   destroyEditor(panel);
+  destroyTerminal(panel);
   revokePanelUrls(panel);
   panel.element.remove();
   if (panel === state.mainPanel) {

@@ -3,7 +3,7 @@
 import { state } from './state.js';
 import { focusNode, recenter, recenterBack, recenterForwardStep } from './mindmap.js';
 import {
-  openMain, openMainOnly, openAsFollower,
+  openMain, openMainOnly, openAsFollower, openTerminalPanel,
   closePanel, toggleMax, dockPanel, bringToFront, setActive, getAllPanels,
 } from './panels.js';
 
@@ -108,11 +108,24 @@ export function setupKeyboard(_unused, vp) {
   };
 
   window.addEventListener('keydown', (e) => {
-    // pokud uživatel píše do inputu / contenteditable / vim editoru, klávesy nepřebíráme
+    // Cmd/Ctrl+T = otevři nový terminál. Funguje i z inputu / vim editoru / .term —
+    // proto je tato větev nad early-escape blokem. preventDefault přepíše browser
+    // tab tab (Cmd+T = new tab).
+    {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyT') {
+        e.preventDefault();
+        openTerminalPanel();
+        return;
+      }
+    }
+
+    // pokud uživatel píše do inputu / contenteditable / vim editoru / terminálu, klávesy nepřebíráme
     const tgt = e.target;
     const tag = tgt && tgt.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || (tgt && tgt.isContentEditable)) return;
     if (tgt && tgt.closest && tgt.closest('.vim')) return;
+    if (tgt && tgt.closest && tgt.closest('.term')) return;
 
     // Mac: Cmd+Shift+*, Win: Ctrl+Shift+* — okenní zkratky
     const mod = e.metaKey || e.ctrlKey;

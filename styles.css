@@ -1934,3 +1934,73 @@ button {
   color: var(--muted);
 }
 
+/* --- terminál ------------------------------------------------------------- */
+
+.term {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: text;
+  overflow: hidden;
+}
+.term__scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 10px 12px 4px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.term__line {
+  white-space: pre-wrap;
+  min-height: 1.45em;
+}
+.term__line--hint {
+  color: var(--muted);
+  font-style: italic;
+  margin-bottom: 4px;
+}
+.term__line--err {
+  color: var(--c-red);
+}
+.term__line--echo {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+.term__line--echo .term__cmd {
+  color: var(--fg);
+}
+.term__line--prompt {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 4px 12px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+.term__prompt {
+  color: var(--c-green);
+  white-space: pre;
+  user-select: none;
+}
+.term__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--fg);
+  font: inherit;
+  padding: 2px 0;
+  caret-color: var(--c-yellow);
+}
+.term.is-running .term__prompt {
+  opacity: 0.5;
+}
+
