@@ -862,6 +862,23 @@ button {
   padding: 1px 6px;
   color: var(--fg);
 }
+.empty-state__title {
+  color: var(--fg);
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.empty-state__src {
+  color: var(--fg);
+  margin: 0 0 6px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.empty-state__err {
+  color: var(--c-red);
+  margin: 0 0 10px;
+  font-size: 13px;
+}
 .empty-state__rest {
   font: inherit;
   font-size: 13px;

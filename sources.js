@@ -552,9 +552,21 @@ async function ghApi(spec, path) {
     headers: { Accept: 'application/vnd.github+json', ...ghAuthHeaders(spec) },
   });
   if (!r.ok) {
+    const remaining = r.headers.get('x-ratelimit-remaining');
+    const resetSec = Number(r.headers.get('x-ratelimit-reset'));
+    const isRateLimit = (r.status === 403 || r.status === 429) && (remaining === '0' || r.status === 429);
+    if (isRateLimit) {
+      const err = new Error(spec.token
+        ? 'GitHub rate limit pro tento token vyčerpaný'
+        : 'GitHub rate limit pro anonymní požadavky (60/hod na IP) vyčerpaný');
+      err.code = 'rate_limit';
+      err.resetAt = Number.isFinite(resetSec) ? resetSec * 1000 : null;
+      err.hasToken = !!spec.token;
+      throw err;
+    }
     const msg = r.status === 404 ? 'repo nebo větev neexistuje (zkontrolujte owner/repo)'
       : r.status === 401 ? 'token neplatný'
-      : r.status === 403 ? 'GitHub odmítl (rate limit nebo přístup)'
+      : r.status === 403 ? 'GitHub odmítl (nedostatečný přístup)'
       : r.status === 409 ? 'repo je prázdné — žádné commity v default branch'
       : r.status === 422 ? 'GitHub: neplatný požadavek (špatná větev?)'
       : r.status >= 500 ? `GitHub má výpadek (${r.status})`
@@ -744,10 +756,74 @@ function hideSourceLoader() {
   if (el) el.hidden = true;
 }
 
+function formatResetIn(ms) {
+  if (!ms) return null;
+  const diff = ms - Date.now();
+  if (diff <= 0) return 'už teď';
+  const min = Math.ceil(diff / 60000);
+  if (min < 60) return `za ${min} min`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `za ${h} h ${m} min` : `za ${h} h`;
+}
+
 export function renderEmptyHint(emptyState) {
   const inner = document.querySelector('[data-empty-hint]');
   if (!inner) return;
   inner.innerHTML = '';
+  if (emptyState && emptyState.ghError) {
+    const { error, spec, kind } = emptyState.ghError;
+    const title = document.createElement('p');
+    title.className = 'empty-state__title';
+    title.textContent = kind === 'restore' ? 'Uložený zdroj se nepovedlo načíst' : 'Zdroj se nepovedlo načíst';
+    inner.appendChild(title);
+
+    const src = document.createElement('p');
+    src.className = 'empty-state__src';
+    src.textContent = `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`;
+    inner.appendChild(src);
+
+    const msg = document.createElement('p');
+    msg.className = 'empty-state__err';
+    let text = error?.message || 'Neznámá chyba';
+    if (error?.code === 'rate_limit') {
+      const when = formatResetIn(error.resetAt);
+      if (when) text += ` (limit se obnoví ${when})`;
+    }
+    msg.textContent = text;
+    inner.appendChild(msg);
+
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'empty-state__rest';
+    retry.textContent = 'Zkusit znovu';
+    retry.addEventListener('click', async () => {
+      retry.disabled = true;
+      const orig = retry.textContent;
+      retry.textContent = 'Zkouším…';
+      try {
+        await connectGithub({ ...spec });
+      } catch (e) {
+        renderEmptyHint({ ghError: { error: e, spec, kind } });
+      } finally {
+        if (retry.isConnected) { retry.disabled = false; retry.textContent = orig; }
+      }
+    });
+    inner.appendChild(retry);
+
+    if (error?.code === 'rate_limit' && !error.hasToken) {
+      const tip = document.createElement('p');
+      tip.className = 'empty-state__note';
+      tip.innerHTML = 'S GitHub tokenem (přes <kbd>Zdroj</kbd> ▾ → <kbd>Připojit GitHub</kbd>) je limit 5000 volání / hod místo 60.';
+      inner.appendChild(tip);
+    } else {
+      const tip = document.createElement('p');
+      tip.className = 'empty-state__note';
+      tip.innerHTML = 'Nebo zvolte jiný zdroj přes <kbd>Zdroj</kbd> ▾ v menu.';
+      inner.appendChild(tip);
+    }
+    return;
+  }
   if (emptyState && emptyState.needsPermission && emptyState.handle) {
     const restore = document.createElement('button');
     restore.type = 'button';
@@ -1017,7 +1093,7 @@ export async function tryRestoreGithub() {
     return true;
   } catch (e) {
     console.warn('restore github failed', e);
-    return false;
+    return { error: e, spec, kind: 'restore' };
   }
 }
 
@@ -1045,7 +1121,7 @@ export async function tryLoadDefaultSource() {
     return true;
   } catch (e) {
     console.warn('default source load failed', e);
-    return false;
+    return { error: e, spec, kind: 'default' };
   }
 }
 

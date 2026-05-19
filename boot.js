@@ -74,13 +74,24 @@ export async function boot() {
   // pokus o restore z IndexedDB — FS handle preferenčně, jinak GitHub, pak default.
   // Empty state ukážeme teprve když nic z toho neuspěje — jinak by „Bez zdroje"
   // problikl dřív, než stihne naskočit loader uvnitř connectGithub / loadAndMount.
+  let ghError = null;
   const mounted = await (async () => {
     if (await tryRestoreSource()) return true;
-    if (await tryRestoreGithub()) return true;
+    const r1 = await tryRestoreGithub();
+    if (r1 === true) return true;
+    if (r1 && r1.error) ghError = r1;
     if (await tryRestoreSnapshot()) return true;
-    return await tryLoadDefaultSource();
+    if (!ghError) {
+      const r2 = await tryLoadDefaultSource();
+      if (r2 === true) return true;
+      if (r2 && r2.error) ghError = r2;
+    }
+    return false;
   })();
-  if (!mounted) showEmptyState();
+  if (!mounted) {
+    if (ghError) renderEmptyHint({ ghError });
+    showEmptyState();
+  }
   restoreRecenterHistory();
   initFromUrl();
   maybeOpenDefaultIndex();
