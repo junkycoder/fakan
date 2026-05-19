@@ -3,7 +3,8 @@
 // Veškerý state je per-mount; žádný globální state mimo session uvnitř.
 
 import { createSession, execLine, runScriptText } from './shell.js';
-import { normalizeCwd, stat } from './shell-fs.js';
+import { normalizeCwd, stat, readdir, resolvePath, isDir } from './shell-fs.js';
+import { BUILTINS } from './shell-builtins.js';
 
 // Sdílená historie napříč všemi terminálovými sessions v IDB-free localStorage.
 // Cap 500 řádků, deduplikace navazujících duplicit (bash style ignoredups).
@@ -159,6 +160,122 @@ export function mountTerminal(host, opts = {}) {
     }
   }
 
+  // --- Tab completion ------------------------------------------------------
+  // Heuristika je záměrně jednoduchá: rozsekni řádek na slova podle whitespace,
+  // detekuj, ve kterém slově je kurzor. První slovo = příkaz (z BUILTINS).
+  // Další slovo = cesta (z VFS). Připone se mezera u souboru / `/` u adresáře.
+
+  function longestCommonPrefix(strs) {
+    if (!strs.length) return '';
+    let pref = strs[0];
+    for (let i = 1; i < strs.length; i++) {
+      while (!strs[i].startsWith(pref)) {
+        pref = pref.slice(0, -1);
+        if (!pref) return '';
+      }
+    }
+    return pref;
+  }
+
+  // Zjisti pozici aktuálního slova: vrátí { start, end, fragment, isFirst }.
+  // Slovo = nejdelší sekvence ne-whitespace znaků kolem kurzoru.
+  function wordAt(value, pos) {
+    let start = pos;
+    while (start > 0 && !/\s/.test(value[start - 1])) start--;
+    let end = pos;
+    while (end < value.length && !/\s/.test(value[end])) end++;
+    const before = value.slice(0, start);
+    // první slovo: před ním je jen whitespace (případně i operátor jako ; && || | pak whitespace)
+    const isFirst = /^(?:\s*|.*[;|&]\s*)$/.test(before);
+    return { start, end, fragment: value.slice(start, end), isFirst };
+  }
+
+  // Pro path-completion rozparseuj fragment na (dir prefix, basename prefix).
+  function splitPath(fragment) {
+    const i = fragment.lastIndexOf('/');
+    if (i < 0) return { dir: '', name: fragment };
+    return { dir: fragment.slice(0, i + 1), name: fragment.slice(i + 1) };
+  }
+
+  function completeCommand(fragment) {
+    const cmds = Object.keys(BUILTINS).filter((c) => c.startsWith(fragment));
+    cmds.sort();
+    return cmds;
+  }
+
+  function completePath(fragment, session) {
+    const { dir, name } = splitPath(fragment);
+    const baseAbs = dir
+      ? resolvePath(session.cwd, dir)
+      : (session.cwd || '');
+    if (dir && !isDir(baseAbs)) return [];
+    const entries = readdir(baseAbs) || [];
+    return entries
+      .filter((e) => e.name.startsWith(name))
+      .filter((e) => name.startsWith('.') || !e.name.startsWith('.'))
+      .map((e) => ({ name: e.name, type: e.type }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function applyCompletion(value, word, replacement, trailing) {
+    const before = value.slice(0, word.start);
+    const after = value.slice(word.end);
+    const ins = replacement + trailing;
+    return { value: before + ins + after, caret: before.length + ins.length };
+  }
+
+  function handleTab() {
+    const value = inputEl.value;
+    const pos = inputEl.selectionStart != null ? inputEl.selectionStart : value.length;
+    const word = wordAt(value, pos);
+    if (word.isFirst) {
+      const cmds = completeCommand(word.fragment);
+      if (!cmds.length) return;
+      if (cmds.length === 1) {
+        const r = applyCompletion(value, word, cmds[0], ' ');
+        inputEl.value = r.value;
+        inputEl.selectionStart = inputEl.selectionEnd = r.caret;
+        return;
+      }
+      const common = longestCommonPrefix(cmds);
+      if (common.length > word.fragment.length) {
+        const r = applyCompletion(value, word, common, '');
+        inputEl.value = r.value;
+        inputEl.selectionStart = inputEl.selectionEnd = r.caret;
+      }
+      printEcho(value);
+      appendText(scrollEl, cmds.join('  '), 'term__line--hint');
+      scrollToEnd();
+      return;
+    }
+    // path completion
+    const entries = completePath(word.fragment, session);
+    if (!entries.length) return;
+    const { dir, name } = splitPath(word.fragment);
+    if (entries.length === 1) {
+      const e = entries[0];
+      const trailing = e.type === 'dir' ? '/' : ' ';
+      const r = applyCompletion(value, word, dir + e.name, trailing);
+      inputEl.value = r.value;
+      inputEl.selectionStart = inputEl.selectionEnd = r.caret;
+      return;
+    }
+    const names = entries.map((e) => e.name);
+    const common = longestCommonPrefix(names);
+    if (common.length > name.length) {
+      const r = applyCompletion(value, word, dir + common, '');
+      inputEl.value = r.value;
+      inputEl.selectionStart = inputEl.selectionEnd = r.caret;
+    }
+    printEcho(value);
+    appendText(
+      scrollEl,
+      entries.map((e) => e.type === 'dir' ? e.name + '/' : e.name).join('  '),
+      'term__line--hint',
+    );
+    scrollToEnd();
+  }
+
   function onKey(e) {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -197,6 +314,24 @@ export function mountTerminal(host, opts = {}) {
       inputEl.value = '';
       histIdx = -1;
       scrollToEnd();
+      return;
+    }
+    // Ctrl+D — EOF: na prázdném inputu zavři terminál (bash chování).
+    // Pokud má input text, ignoruj (jako bash).
+    if (e.ctrlKey && (e.key === 'd' || e.key === 'D')) {
+      e.preventDefault();
+      if (running) return;
+      if (inputEl.value === '') {
+        appendText(scrollEl, 'exit', 'term__line--hint');
+        scrollToEnd();
+        if (opts.onClose) opts.onClose();
+      }
+      return;
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      if (running) return;
+      handleTab();
       return;
     }
   }
