@@ -24,25 +24,34 @@
 // `bash` přijde s Cloudflare Containers v další iteraci.
 
 import { quotaCheck, quotaBump, quotaIdent, quotaLimits, quotaRead } from './quota.js';
+import { DurableObject } from 'cloudflare:workers';
 
-// Container binding pro skutečný bash (Cloudflare Containers, iterace 9).
-// Třída se musí exportovat, i když uživatel binding ještě aktivoval —
-// wrangler.jsonc binding je defaultně zakomentovaný, takže `env.SHELL` chybí
-// a Worker se vrátí na mock runner.
+// Container binding pro skutečný bash (Cloudflare Containers).
+// Třída se musí exportovat i když Containers nejsou aktivní — ale aktivace
+// vyžaduje runtime feature v účtu + odkomentování `containers` /
+// `durable_objects` / `migrations` ve wrangler.jsonc.
 //
-// Cloudflare Containers vyžadují wrangler ≥ 4 + Containers feature v účtu.
-// Image se buildí z worker/Dockerfile při `wrangler deploy`.
-export class ShellContainer {
+// `this.ctx.container` je Container API exposed Cloudflare runtimem. Worker
+// uvnitř startuje kontejner z `worker/Dockerfile` (Alpine + Node + bash),
+// který poslouchá na :8080.
+export class ShellContainer extends DurableObject {
   constructor(state, env) {
-    this.state = state;
-    this.env = env;
+    super(state, env);
   }
-  // Cloudflare Container framework — kontejner poslouchá na portu 8080;
-  // Worker forwarduje fetch požadavek dovnitř.
+
   async fetch(request) {
-    // Při skutečném Container bindingu Cloudflare wraps this method přes
-    // platformu — port se mapuje automaticky. Tento stub je pro vývoj.
-    return new Response('container not active (mock fallback)', { status: 503 });
+    const c = this.ctx.container;
+    if (!c) {
+      return new Response('Container API není dostupné v tomto runtime', { status: 503 });
+    }
+    if (!c.running) {
+      // enableInternet: kontejner potřebuje out-bound (curl, git clone, npm install).
+      // Pokud chceš striktní sandbox, dej false a přidej allowlist přes Cloudflare
+      // Egress policies.
+      c.start({ enableInternet: true });
+    }
+    const port = c.getTcpPort(8080);
+    return port.fetch(request);
   }
 }
 
