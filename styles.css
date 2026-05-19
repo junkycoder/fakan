@@ -207,7 +207,7 @@ button {
   bottom: calc(12px + var(--safe-b));
   left: 50%;
   transform: translateX(-50%);
-  z-index: 20;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -885,7 +885,7 @@ button {
   position: fixed;
   top: calc(12px + var(--safe-t));
   left: calc(12px + var(--safe-l));
-  z-index: 20;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1132,8 +1132,8 @@ button {
   .nav__home-btn { max-width: 32vw; }
 
   /* srcbar na mobilu se zabalí do malého „zdroj" tlačítka.
-     Rozbalení překryje pravý badge — vyšší z-index, otevřené nad ostatním. */
-  .srcbar { z-index: 30; }
+     Drží se pod okny ([.panels] z-index 10), ale nad badge / canvas. */
+  .srcbar { z-index: 6; }
   .srcbar__toggle {
     display: inline-flex;
     align-items: center;
