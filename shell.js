@@ -581,9 +581,32 @@ async function runScriptFile(scriptPath, args, session, io) {
   }
 }
 
+// Alias expanze před tokenizací. Bash dělá per řádek: pokud první slovo má
+// alias, replace + retry (omezené 10 iteracemi proti cyklům). Multiline
+// skript: rozdělíme po řádcích, expand každého řádku zvlášť.
+function expandAliasesInScript(text, aliases) {
+  if (!aliases || !Object.keys(aliases).length) return text;
+  return text.split('\n').map((line) => expandAliasLine(line, aliases)).join('\n');
+}
+
+function expandAliasLine(line, aliases) {
+  for (let i = 0; i < 10; i++) {
+    const m = /^(\s*)(\S+)(.*)$/.exec(line);
+    if (!m) return line;
+    const [, lead, first, rest] = m;
+    if (!Object.prototype.hasOwnProperty.call(aliases, first)) return line;
+    line = lead + aliases[first] + rest;
+    // pokud alias hodnota začíná stejným jménem, zastav (proti rekurzi)
+    const m2 = /^(\s*)(\S+)/.exec(line);
+    if (m2 && m2[2] === first) return line;
+  }
+  return line;
+}
+
 export async function runScriptText(text, session, io) {
+  const expanded = expandAliasesInScript(text, session.aliases);
   let tokens;
-  try { tokens = tokenize(text); }
+  try { tokens = tokenize(expanded); }
   catch (e) { io.stderr(`syntax: ${e.message || e}`); return 2; }
 
   let stmts;

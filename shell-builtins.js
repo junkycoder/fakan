@@ -12,6 +12,16 @@ function fmtCwd(cwd) {
   return c ? `~/${c}` : '~/';
 }
 
+// Otevři uzel ze zdroje v panelu přes host callback (openMain/openPreview/openAsFollower).
+// Vrátí 0 pokud uzel existuje a otevřel se, jinak 1.
+function openByPath(arg, session, io, openFn, kind) {
+  const target = resolvePath(session.cwd, arg);
+  const s = stat(target);
+  if (!s) { io.stderr(`${kind}: ${arg}: nic takového`); return 1; }
+  openFn(s.node);
+  return 0;
+}
+
 // Sdílený helper pro head / tail.
 async function readSlice(files, n, name, session, io) {
   if (n <= 0) return 0;
@@ -158,8 +168,9 @@ export const BUILTINS = {
     io.stdout('Bloky:    for x in a b c; do …; done  ·  if cmd; then …; fi  ·  while');
     io.stdout('Globs:    *.md  ·  blog/*.html');
     io.stdout('Joby:     ve vimu Ctrl+Z = suspend  ·  fg = návrat  ·  jobs');
-    io.stdout('');
-    io.stdout('Brzy: fakan příkazy (open, vim, dock), .fakanrc auto-source.');
+    io.stdout('Fakan:    open <p>  vim <p>  preview <p>  dock <z>  panels  recenter');
+    io.stdout('Shell:    alias name=val  ·  unalias  ·  history  ·  export VAR=val');
+    io.stdout('Rc:       ~/.fakanrc  — auto-source při startu terminálu');
     return 0;
   },
 
@@ -256,6 +267,112 @@ export const BUILTINS = {
     list.forEach((job, i) => {
       io.stdout(`[${list.length - i}]+  Stopped  vim ${job}`);
     });
+    return 0;
+  },
+
+  alias(args, session, io) {
+    if (!args.length) {
+      const keys = Object.keys(session.aliases).sort();
+      if (!keys.length) return 0;
+      for (const k of keys) io.stdout(`alias ${k}='${session.aliases[k]}'`);
+      return 0;
+    }
+    let code = 0;
+    for (const a of args) {
+      const eq = a.indexOf('=');
+      if (eq < 0) {
+        if (a in session.aliases) io.stdout(`alias ${a}='${session.aliases[a]}'`);
+        else { io.stderr(`alias: ${a}: nenalezen`); code = 1; }
+        continue;
+      }
+      const k = a.slice(0, eq);
+      let v = a.slice(eq + 1);
+      // strip jediné páry uvozovek kolem hodnoty (bash compat)
+      if ((v.startsWith("'") && v.endsWith("'")) || (v.startsWith('"') && v.endsWith('"'))) {
+        v = v.slice(1, -1);
+      }
+      if (!/^[A-Za-z_][A-Za-z0-9_-]*$/.test(k)) {
+        io.stderr(`alias: neplatné jméno: ${k}`); code = 1; continue;
+      }
+      session.aliases[k] = v;
+    }
+    return code;
+  },
+
+  unalias(args, session, io) {
+    for (const a of args) {
+      if (a in session.aliases) delete session.aliases[a];
+    }
+    return 0;
+  },
+
+  history(args, session, io) {
+    const n = args[0] ? Number(args[0]) : session.history.length;
+    const slice = session.history.slice(-n);
+    const offset = session.history.length - slice.length;
+    slice.forEach((line, i) => {
+      io.stdout(`${String(offset + i + 1).padStart(4)}  ${line}`);
+    });
+    return 0;
+  },
+
+  // --- fakan-specifické příkazy (most do panels.js přes session.host) -----
+
+  open(args, session, io) {
+    if (!args.length) { io.stderr('open: chybí cesta'); return 1; }
+    const fn = session.host && session.host.openMain;
+    if (!fn) { io.stderr('open: nedostupné v tomto kontextu'); return 1; }
+    return openByPath(args[0], session, io, fn, 'main');
+  },
+
+  vim(args, session, io) {
+    // vim <path> = open --mode source. Pokud path neexistuje, vytvoř ho.
+    if (!args.length) { io.stderr('vim: chybí cesta'); return 1; }
+    const fn = session.host && session.host.openMain;
+    if (!fn) { io.stderr('vim: nedostupné v tomto kontextu'); return 1; }
+    const target = resolvePath(session.cwd, args[0]);
+    if (!exists(target)) {
+      try { touchFile(target); }
+      catch (e) { io.stderr(`vim: ${args[0]}: ${e.message || e}`); return 1; }
+    }
+    return openByPath(args[0], session, io, fn, 'source');
+  },
+
+  preview(args, session, io) {
+    if (!args.length) { io.stderr('preview: chybí cesta'); return 1; }
+    const fn = session.host && session.host.openPreview;
+    if (!fn) { io.stderr('preview: nedostupné v tomto kontextu'); return 1; }
+    return openByPath(args[0], session, io, fn, 'preview');
+  },
+
+  dock(args, session, io) {
+    if (!args.length) { io.stderr('dock: čeká left|right|top|bottom|full'); return 1; }
+    const zone = args[0];
+    if (!['left', 'right', 'top', 'bottom', 'full'].includes(zone)) {
+      io.stderr(`dock: neznámá zóna: ${zone}`); return 1;
+    }
+    const fn = session.host && session.host.dockPanel;
+    if (!fn) { io.stderr('dock: nedostupné'); return 1; }
+    fn(zone);
+    return 0;
+  },
+
+  panels(args, session, io) {
+    const fn = session.host && session.host.listPanels;
+    if (!fn) { io.stderr('panels: nedostupné'); return 1; }
+    const list = fn();
+    if (!list.length) { io.stdout('žádné otevřené panely'); return 0; }
+    for (const p of list) {
+      io.stdout(`${p.variant.padEnd(8)} ${p.active ? '*' : ' '} ${p.path}`);
+    }
+    return 0;
+  },
+
+  recenter(args, session, io) {
+    const fn = session.host && session.host.recenter;
+    if (!fn) { io.stderr('recenter: nedostupné'); return 1; }
+    const target = args[0] != null ? resolvePath(session.cwd, args[0]) : '';
+    fn(target);
     return 0;
   },
 

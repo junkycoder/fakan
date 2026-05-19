@@ -760,6 +760,18 @@ function mountTerminalIfNeeded(panel, bodyEl) {
     listJobs: () => state.jobStack
       .filter((p) => p && p.element && p.element.isConnected)
       .map((p) => p.node?.name || p.node?.path || '?'),
+    openMain: (n) => openMain(n),
+    openPreview: (n) => openPreview(n),
+    openAsFollower: (n) => openAsFollower(n),
+    closeAll: () => { for (const p of allPanels()) closePanel(p); },
+    dockPanel: (zone) => { if (state.activePanel) dockPanel(state.activePanel, zone); },
+    listPanels: () => allPanels().map((p) => ({
+      variant: p.variant,
+      path: p.path,
+      name: p.node?.name || '',
+      active: p === state.activePanel,
+    })),
+    recenter: (path) => recenter(path),
   });
   panel.terminal = handle;
 }

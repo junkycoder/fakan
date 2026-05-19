@@ -2,8 +2,29 @@
 // VFS adapter (`shell-fs.js`), built-in příkazy (`shell-builtins.js`).
 // Veškerý state je per-mount; žádný globální state mimo session uvnitř.
 
-import { createSession, execLine } from './shell.js';
-import { normalizeCwd } from './shell-fs.js';
+import { createSession, execLine, runScriptText } from './shell.js';
+import { normalizeCwd, stat } from './shell-fs.js';
+
+// Sdílená historie napříč všemi terminálovými sessions v IDB-free localStorage.
+// Cap 500 řádků, deduplikace navazujících duplicit (bash style ignoredups).
+const LS_HISTORY = 'fakan:term-history';
+const HISTORY_CAP = 500;
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(LS_HISTORY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.slice(-HISTORY_CAP) : [];
+  } catch { return []; }
+}
+
+function saveHistory(history) {
+  try {
+    const trimmed = history.slice(-HISTORY_CAP);
+    localStorage.setItem(LS_HISTORY, JSON.stringify(trimmed));
+  } catch {}
+}
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
@@ -30,11 +51,20 @@ export function mountTerminal(host, opts = {}) {
     cwd: opts.cwd || '',
     env: opts.env,
   });
-  // host hooky — fg, atd. — žijí v session.host aby je shell-builtins
-  // mohly volat bez kruhové závislosti na panels.js.
+  // sdílená historie napříč sessions
+  session.history = loadHistory();
+  // host hooky — fg, fakan příkazy (open/vim/dock/…) — žijí v session.host aby
+  // je shell-builtins mohly volat bez kruhové závislosti na panels.js.
   session.host = {
     resumeLastEditor: opts.resumeLastEditor || null,
     listJobs: opts.listJobs || null,
+    openMain: opts.openMain || null,
+    openPreview: opts.openPreview || null,
+    openAsFollower: opts.openAsFollower || null,
+    closeAll: opts.closeAll || null,
+    dockPanel: opts.dockPanel || null,
+    listPanels: opts.listPanels || null,
+    recenter: opts.recenter || null,
   };
 
   const root = document.createElement('div');
@@ -98,7 +128,12 @@ export function mountTerminal(host, opts = {}) {
     printEcho(cmd);
     const trimmed = cmd.trim();
     if (!trimmed) { scrollToEnd(); return; }
-    session.history.push(trimmed);
+    // ignoredups: nepřidávat opakovaný stejný řádek
+    const last = session.history[session.history.length - 1];
+    if (trimmed !== last) {
+      session.history.push(trimmed);
+      saveHistory(session.history);
+    }
     histIdx = -1;
     running = true;
     root.classList.add('is-running');
@@ -173,6 +208,31 @@ export function mountTerminal(host, opts = {}) {
   });
 
   welcome();
+
+  // Auto-source ~/.fakanrc (pokud existuje) — aliasy, env, prompt. Pokud má
+  // syntax chybu, zobrazí ji do welcome bufferu a pokračuje.
+  (async () => {
+    const rc = stat('.fakanrc');
+    if (rc && rc.type === 'file' && rc.node && rc.node.raw != null) {
+      const line = document.createElement('div');
+      line.className = 'term__line term__line--hint';
+      line.textContent = 'načítám .fakanrc…';
+      scrollEl.appendChild(line);
+      try {
+        await runScriptText(rc.node.raw, session, {
+          stdout: (t) => appendText(scrollEl, t, 'term__line--out'),
+          stderr: (t) => appendText(scrollEl, t, 'term__line--err'),
+          clear: () => {},
+          close: () => {},
+        });
+      } catch (e) {
+        appendText(scrollEl, `.fakanrc: ${e.message || e}`, 'term__line--err');
+      }
+      renderPrompt();
+      scrollToEnd();
+    }
+  })();
+
   renderPrompt();
   // focus dáme až po insertu do DOM (panel autofokus)
   requestAnimationFrame(() => { try { inputEl.focus(); } catch {} });
