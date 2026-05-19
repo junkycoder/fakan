@@ -894,13 +894,15 @@ button {
 
 .srcbar__source,
 .srcbar__branch,
-.srcbar__publish {
+.srcbar__publish,
+.srcbar__search {
   position: relative;
   outline: none;
 }
 .srcbar__source[hidden],
 .srcbar__branch[hidden],
-.srcbar__publish[hidden] { display: none; }
+.srcbar__publish[hidden],
+.srcbar__search[hidden] { display: none; }
 
 /* Toggle pill (jen mobil) — schovaný na desktopu. */
 .srcbar__toggle { display: none; }
@@ -908,7 +910,8 @@ button {
 
 .srcbar__source-btn,
 .srcbar__branch-btn,
-.srcbar__publish-btn {
+.srcbar__publish-btn,
+.srcbar__search-btn {
   font-family: var(--mono);
   font-size: 12px;
   padding: 4px 10px;
@@ -964,6 +967,16 @@ button {
 }
 .srcbar__publish:hover .srcbar__publish-btn,
 .srcbar__publish:focus-within .srcbar__publish-btn { filter: brightness(1.1); }
+
+/* Hledat — lupa */
+.srcbar__search-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.85;
+}
+.srcbar__search:hover .srcbar__search-btn,
+.srcbar__search:focus-within .srcbar__search-btn { color: var(--c-yellow); }
 
 /* --- srcbar dropdown menu (zdroj i větve) -------------------------------- */
 .srcbar__menu {
@@ -1147,6 +1160,11 @@ button {
   .srcbar__source-label { max-width: 38vw; }
   .srcbar__branch-label { max-width: 16vw; }
   .srcbar__publish-label { max-width: 16vw; }
+
+  /* Hledat — pill je vidět vždy (i když je zdroj zabalený) */
+  .srcbar__search { display: block; }
+  .srcbar__search-label { display: none; }
+  .srcbar__search-btn { padding: 4px 8px; }
 }
 
 /* --- GitHub dialog ------------------------------------------------------- */
@@ -2024,9 +2042,68 @@ button {
   flex-wrap: wrap;
   justify-content: flex-end;
 }
+.badge__links {
+  display: flex;
+  gap: 4px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .badge__meta-sep {
   font-size: 11px;
   color: var(--muted);
+}
+
+/* „Více" toggle — pill viditelný jen na mobilu, na desktopu skrytý */
+.badge__more { display: none; }
+.badge__more-glyph { font-size: 13px; line-height: 1; opacity: 0.85; }
+
+@media (max-width: 600px) {
+  .badge__meta-row {
+    position: relative;
+    justify-content: flex-end;
+  }
+  .badge__more {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    background: color-mix(in oklab, var(--bg) 80%, transparent);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .badge__more:hover,
+  .badge__more:focus-visible {
+    color: var(--c-yellow);
+    outline: none;
+  }
+  .badge__links {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 160px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+  }
+  .badge.is-open .badge__links { display: flex; }
+  .badge__links .badge__meta {
+    padding: 6px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .badge__links .badge__meta-sep { display: none; }
 }
 
 /* --- terminál ------------------------------------------------------------- */

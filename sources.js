@@ -2165,22 +2165,22 @@ export function mountBadge() {
   if (!wrap) return;
   wrap.innerHTML = `
     <div class="badge__meta-row">
-      <a class="badge__meta" href="#" data-badge-search>hledat</a>
-      <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="#" data-badge-help>help</a>
-      <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="#" data-badge-tip>přispět</a>
-      <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
-      <span class="badge__meta-sep" aria-hidden="true">·</span>
-      <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">kontakt</a>
+      <button class="badge__more" type="button" data-badge-more aria-label="Více odkazů" aria-expanded="false">
+        <span class="badge__more-glyph" aria-hidden="true">≡</span>
+        <span class="badge__more-label">menu</span>
+      </button>
+      <div class="badge__links" data-badge-links>
+        <a class="badge__meta" href="#" data-badge-help>help</a>
+        <span class="badge__meta-sep" aria-hidden="true">·</span>
+        <a class="badge__meta" href="#" data-badge-tip>přispět</a>
+        <span class="badge__meta-sep" aria-hidden="true">·</span>
+        <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
+        <span class="badge__meta-sep" aria-hidden="true">·</span>
+        <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">kontakt</a>
+      </div>
     </div>
   `;
   wrap.removeAttribute('hidden');
-  wrap.querySelector('[data-badge-search]').addEventListener('click', (e) => {
-    e.preventDefault();
-    showSearchDialog();
-  });
   wrap.querySelector('[data-badge-tip]').addEventListener('click', (e) => {
     e.preventDefault();
     showTipDialog();
@@ -2189,6 +2189,41 @@ export function mountBadge() {
     e.preventDefault();
     showHelpDialog();
   });
+  // Po kliku na jakýkoli odkaz menu zavřít (mobil)
+  wrap.querySelectorAll('.badge__links a').forEach((a) => {
+    a.addEventListener('click', () => closeBadge(wrap));
+  });
+
+  const more = wrap.querySelector('[data-badge-more]');
+  more.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const open = wrap.classList.toggle('is-open');
+    more.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (!wrap.classList.contains('is-open')) return;
+    if (wrap.contains(e.target)) return;
+    closeBadge(wrap);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!wrap.classList.contains('is-open')) return;
+    closeBadge(wrap);
+    more.focus({ preventScroll: true });
+  });
+
+  // Hledat pill v srcbaru → otevři search dialog
+  const searchBtn = document.querySelector('[data-search-btn]');
+  searchBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    showSearchDialog();
+  });
+}
+
+function closeBadge(wrap) {
+  wrap.classList.remove('is-open');
+  wrap.querySelector('[data-badge-more]')?.setAttribute('aria-expanded', 'false');
 }
 
 // --- Help dialog -----------------------------------------------------------

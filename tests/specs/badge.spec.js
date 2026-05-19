@@ -1,4 +1,5 @@
-// Badge meta — řádek odkazů v rohu (přispět · odebírat · github · email · podmínky · licence).
+// Badge meta — řádek odkazů v pravém rohu (help · přispět · github · kontakt).
+// „hledat" se přesunul do srcbar pillu vlevo (viz srcbar.spec.js, pokud existuje).
 import { test, expect } from '@playwright/test';
 import { bootApp } from '../utils/boot.js';
 import { SEL } from '../utils/selectors.js';
@@ -10,7 +11,7 @@ test.describe('Badge meta', () => {
 
   test('obsahuje meta odkazy ve správném pořadí', async ({ page }) => {
     const labels = await page.locator(`${SEL.badge} a`).allTextContents();
-    expect(labels).toEqual(['hledat', 'help', 'přispět', 'github', 'kontakt']);
+    expect(labels).toEqual(['help', 'přispět', 'github', 'kontakt']);
   });
 
   test('github link vede na junkycoder/fakan a otevírá se v novém tabu', async ({ page }) => {
@@ -32,5 +33,12 @@ test.describe('Badge meta', () => {
     const tip = page.locator(`${SEL.badge} a`, { hasText: 'přispět' });
     await expect(help).toHaveAttribute('href', '#');
     await expect(tip).toHaveAttribute('href', '#');
+  });
+
+  test('hledat pill je v srcbaru a otevírá search dialog', async ({ page }) => {
+    const searchBtn = page.locator('[data-search-btn]');
+    await expect(searchBtn).toBeVisible();
+    await searchBtn.click();
+    await expect(page.locator('[data-search-dialog]')).toBeVisible();
   });
 });
