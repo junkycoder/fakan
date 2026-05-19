@@ -1372,91 +1372,6 @@ function showGithubDialog() {
   setTimeout(() => { repoIn.focus(); renderList(); }, 0);
 }
 
-// --- Branch picker ----------------------------------------------------------
-
-function showBranchPicker() {
-  if (!state.githubSpec) return;
-  document.querySelector('[data-gh-branch-picker]')?.remove();
-
-  const spec = state.githubSpec;
-  const wrap = document.createElement('div');
-  wrap.className = 'gh-dialog';
-  wrap.setAttribute('data-gh-branch-picker', '');
-  wrap.innerHTML = `
-    <div class="gh-dialog__panel" role="dialog" aria-modal="true" aria-label="Přepnout větev">
-      <h2 class="gh-dialog__title">Větev v ${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</h2>
-      <div class="gh-dialog__status" data-gh-status>načítám větve…</div>
-      <div class="gh-branches" data-gh-branches hidden></div>
-      <div class="gh-dialog__buttons">
-        <button type="button" class="gh-dialog__btn" data-gh-cancel>Zavřít</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-
-  const statusEl = wrap.querySelector('[data-gh-status]');
-  const listEl = wrap.querySelector('[data-gh-branches]');
-  const cancelBtn = wrap.querySelector('[data-gh-cancel]');
-
-  const close = () => {
-    wrap.remove();
-    document.removeEventListener('keydown', onKey);
-  };
-  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-  document.addEventListener('keydown', onKey);
-  cancelBtn.addEventListener('click', close);
-  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
-
-  const switchTo = async (branch) => {
-    if (!state.githubSpec || branch === state.githubSpec.branch) { close(); return; }
-    statusEl.dataset.kind = 'info';
-    statusEl.textContent = `přepínám na ${branch}…`;
-    statusEl.hidden = false;
-    listEl.hidden = true;
-    try {
-      await connectGithub({ ...spec, branch }, (m) => { statusEl.textContent = m; });
-      close();
-    } catch (err) {
-      console.error(err);
-      statusEl.dataset.kind = 'err';
-      statusEl.textContent = `Chyba: ${err.message}`;
-      listEl.hidden = false;
-    }
-  };
-
-  (async () => {
-    try {
-      const branches = await ghListBranches(spec);
-      if (!branches.length) {
-        statusEl.dataset.kind = 'err';
-        statusEl.textContent = 'Žádné větve.';
-        return;
-      }
-      const cur = spec.branch;
-      const ordered = branches.slice().sort((a, b) => {
-        if (a === cur) return -1;
-        if (b === cur) return 1;
-        return a.localeCompare(b);
-      });
-      listEl.innerHTML = ordered.map((b) => {
-        const isCur = b === cur;
-        return `<button type="button" class="gh-branch${isCur ? ' gh-branch--current' : ''}" data-branch="${escapeHtml(b)}">
-          <span class="gh-branch__name">${escapeHtml(b)}</span>
-          ${isCur ? '<span class="gh-branch__tag">aktuální</span>' : ''}
-        </button>`;
-      }).join('');
-      listEl.querySelectorAll('[data-branch]').forEach((btn) => {
-        btn.addEventListener('click', () => switchTo(btn.dataset.branch));
-      });
-      statusEl.hidden = true;
-      listEl.hidden = false;
-    } catch (err) {
-      console.error(err);
-      statusEl.dataset.kind = 'err';
-      statusEl.textContent = `Chyba: ${err.message}`;
-    }
-  })();
-}
 
 // --- Export: mini ZIP encoder (stored, bez deflate) -------------------------
 
@@ -1788,81 +1703,200 @@ async function ghPush(spec, message, files, onStatus) {
   return { sha: newCommit.sha, unchanged: false };
 }
 
-function renderGitMenu() {
-  const wrap = document.querySelector('[data-nav-git]');
+function renderPublishButton() {
+  const wrap = document.querySelector('[data-nav-publish]');
   if (!wrap) return;
-  if (!state.githubSpec) {
+  const hasSource = !!(state.rootHandle || state.githubSpec || state.uploadedSnapshot);
+  if (!hasSource) {
     wrap.setAttribute('hidden', '');
     return;
   }
   wrap.removeAttribute('hidden');
 
-  const spec = state.githubSpec;
-  const branch = spec.branch || 'main';
-  const label = wrap.querySelector('[data-git-label]');
-  if (label) label.textContent = branch;
+  const btn = wrap.querySelector('[data-publish-btn]');
+  const glyph = wrap.querySelector('[data-publish-glyph]');
+  const label = wrap.querySelector('[data-publish-label]');
 
-  const menu = wrap.querySelector('[data-git-menu]');
-  if (!menu) return;
+  if (state.githubSpec) {
+    glyph.textContent = '⎇';
+    label.textContent = state.githubSpec.branch || 'main';
+    btn.setAttribute('aria-label', `Publish do ${state.githubSpec.owner}/${state.githubSpec.repo}`);
+  } else if (state.uploadedSnapshot) {
+    glyph.textContent = '↓';
+    label.textContent = 'stáhnout';
+    btn.setAttribute('aria-label', 'Stáhnout snapshot');
+  } else {
+    glyph.textContent = '↓';
+    label.textContent = 'stáhnout';
+    btn.setAttribute('aria-label', 'Stáhnout složku jako ZIP');
+  }
+
+  if (!btn.dataset.bound) {
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => showPublishDialog());
+  }
+}
+
+function showPublishDialog() {
+  if (document.querySelector('[data-pub-dialog]')) return;
+  if (state.githubSpec) {
+    showGithubPublishDialog();
+  } else if (state.uploadedSnapshot || state.rootHandle) {
+    showLocalPublishDialog();
+  }
+}
+
+function buildDialogShell(ariaLabel) {
+  const wrap = document.createElement('div');
+  wrap.className = 'gh-dialog';
+  wrap.setAttribute('data-pub-dialog', '');
+  wrap.innerHTML = `
+    <div class="gh-dialog__panel pub-dialog" role="dialog" aria-modal="true" aria-label="${escapeHtml(ariaLabel)}">
+      <button type="button" class="pub-dialog__close" data-pub-close aria-label="Zavřít">×</button>
+      <div data-pub-body></div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+  document.addEventListener('keydown', onKey);
+  wrap.querySelector('[data-pub-close]').addEventListener('click', close);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+
+  return { wrap, body: wrap.querySelector('[data-pub-body]'), close };
+}
+
+function showLocalPublishDialog() {
+  const isSnapshot = !!state.uploadedSnapshot;
+  const name = state.rootHandle?.name || state.uploadedSnapshot?.name || 'zdroj';
+  const { body, close } = buildDialogShell(isSnapshot ? 'Stáhnout snapshot' : 'Stáhnout složku');
+
+  const info = isSnapshot
+    ? `Snapshot <b>${escapeHtml(name)}</b> žije v paměti prohlížeče. Vaše úpravy se ukládají do <em>localStorage</em>. Pro persistenci si stáhněte aktuální verzi jako ZIP.`
+    : `Složka <b>${escapeHtml(name)}</b> je připojená přes prohlížeč. Úpravy v editoru se zatím <b>neukládají zpět na disk</b> — zápis do FS přes File System Access API není v fakanovi implementovaný. Změny žijí jen v <em>localStorage</em> tohoto prohlížeče. Pro persistenci si stáhněte ZIP a rozbalte ho přes původní složku.`;
+
+  body.innerHTML = `
+    <h2 class="gh-dialog__title">${isSnapshot ? 'Stáhnout snapshot' : 'Stáhnout složku jako ZIP'}</h2>
+    <p class="gh-dialog__hint">${info}</p>
+    <div class="gh-dialog__buttons">
+      <button type="button" class="gh-dialog__btn" data-pub-cancel>Zavřít</button>
+      <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-pub-download>Stáhnout ZIP</button>
+    </div>
+  `;
+
+  body.querySelector('[data-pub-cancel]').addEventListener('click', close);
+  body.querySelector('[data-pub-download]').addEventListener('click', async () => {
+    await exportAsZip();
+    close();
+  });
+}
+
+function showGithubPublishDialog() {
+  const spec = state.githubSpec;
+  if (!spec) return;
+  const branch = spec.branch || 'main';
+  const { wrap, body, close } = buildDialogShell(`Publish do ${spec.owner}/${spec.repo}`);
 
   const tokenFieldHtml = spec.token ? '' : `
-    <div>
-      <div class="nav__git-token-row">
+    <div class="pub-dialog__field">
+      <div class="pub-dialog__field-row">
         <span>Token <em>(potřeba pro push)</em></span>
-        <a class="nav__git-token-help" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">kde ho vzít?</a>
+        <a class="pub-dialog__link" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">kde ho vzít?</a>
       </div>
-      <input class="nav__git-token" type="password" data-git-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
-      <div class="nav__git-token-warn">Uloží se nezašifrovaně do prohlížeče (IndexedDB). Na sdíleném počítači použijte token jen jednorázově (smažte přes „Odpojit").</div>
+      <input class="pub-dialog__input" type="password" data-pub-token placeholder="ghp_… / github_pat_…" autocomplete="off" spellcheck="false">
+      <div class="pub-dialog__warn">Uloží se nezašifrovaně do prohlížeče (IndexedDB). Na sdíleném počítači použijte token jen jednorázově (smažte přes „Odpojit").</div>
     </div>
   `;
 
-  menu.innerHTML = `
-    <div class="nav__git-head">
-      <span class="nav__git-repo">${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</span>
-      <a class="nav__git-branch-switch" href="#" data-git-branch>změnit větev</a>
+  body.innerHTML = `
+    <div class="pub-dialog__head">
+      <span class="pub-dialog__repo">${escapeHtml(spec.owner)}/${escapeHtml(spec.repo)}</span>
+      <label class="pub-dialog__branch">
+        <span>větev:</span>
+        <select class="pub-dialog__branch-sel" data-pub-branch>
+          <option value="${escapeHtml(branch)}" selected>${escapeHtml(branch)}</option>
+        </select>
+      </label>
     </div>
-    <div class="nav__git-changes" data-git-changes>
-      <div class="nav__git-changes-empty">načítám změny…</div>
+    <div class="pub-dialog__changes" data-pub-changes>
+      <div class="pub-dialog__changes-empty">načítám změny…</div>
     </div>
-    <input class="nav__git-input" type="text" data-git-msg placeholder="popis změny" autocomplete="off" spellcheck="false" value="update z fakan.cz">
+    <input class="pub-dialog__input" type="text" data-pub-msg placeholder="popis změny" autocomplete="off" spellcheck="false" value="update z fakan.cz">
     ${tokenFieldHtml}
-    <div class="nav__git-status" data-git-status></div>
-    <button type="button" class="nav__git-publish" data-git-publish disabled>Publish</button>
+    <div class="pub-dialog__status" data-pub-status></div>
+    <div class="gh-dialog__buttons">
+      <button type="button" class="gh-dialog__btn" data-pub-cancel>Zrušit</button>
+      <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-pub-publish disabled>Publish</button>
+    </div>
   `;
 
-  const changesEl = menu.querySelector('[data-git-changes]');
-  const msgIn = menu.querySelector('[data-git-msg]');
-  const tokenIn = menu.querySelector('[data-git-token]');
-  const statusEl = menu.querySelector('[data-git-status]');
-  const publishBtn = menu.querySelector('[data-git-publish]');
-  const branchSwitch = menu.querySelector('[data-git-branch]');
+  const branchSel = body.querySelector('[data-pub-branch]');
+  const changesEl = body.querySelector('[data-pub-changes]');
+  const msgIn = body.querySelector('[data-pub-msg]');
+  const tokenIn = body.querySelector('[data-pub-token]');
+  const statusEl = body.querySelector('[data-pub-status]');
+  const publishBtn = body.querySelector('[data-pub-publish]');
+  const cancelBtn = body.querySelector('[data-pub-cancel]');
 
-  branchSwitch.addEventListener('click', (e) => {
-    e.preventDefault();
-    closeGitMenu();
-    showBranchPicker();
+  cancelBtn.addEventListener('click', close);
+
+  // Lazy: populate branch select
+  ghListBranches(spec).then((branches) => {
+    if (!branches.length) return;
+    const ordered = branches.slice().sort((a, b) => {
+      if (a === branch) return -1;
+      if (b === branch) return 1;
+      return a.localeCompare(b);
+    });
+    branchSel.innerHTML = ordered.map((b) =>
+      `<option value="${escapeHtml(b)}"${b === branch ? ' selected' : ''}>${escapeHtml(b)}</option>`
+    ).join('');
+  }).catch((err) => {
+    console.error('branches', err);
   });
 
-  // Diff vůči GitHub HEAD — async (počítá blob SHA pro každý kandidátní soubor)
+  branchSel.addEventListener('change', async () => {
+    const next = branchSel.value;
+    if (!next || next === branch) return;
+    statusEl.dataset.kind = 'info';
+    statusEl.textContent = `přepínám na ${next}…`;
+    publishBtn.disabled = true;
+    branchSel.disabled = true;
+    try {
+      await connectGithub({ ...spec, branch: next }, (m) => { statusEl.textContent = m; });
+      close();
+    } catch (err) {
+      console.error(err);
+      statusEl.dataset.kind = 'err';
+      statusEl.textContent = `Chyba: ${err.message}`;
+      branchSel.disabled = false;
+    }
+  });
+
+  // Diff vůči GitHub HEAD
   const renderChanges = (files) => {
     if (!files.length) {
-      changesEl.innerHTML = '<div class="nav__git-changes-empty">žádné změny</div>';
+      changesEl.innerHTML = '<div class="pub-dialog__changes-empty">žádné změny</div>';
       publishBtn.disabled = true;
       return;
     }
     const prefix = { mod: 'M', add: '+', del: '−' };
     const items = files.map((f) =>
-      `<li class="nav__git-change nav__git-change--${f.kind}">` +
-      `<span class="nav__git-change-kind">${prefix[f.kind]}</span>` +
-      `<span class="nav__git-change-path">${escapeHtml(f.path)}</span>` +
+      `<li class="pub-dialog__change pub-dialog__change--${f.kind}">` +
+      `<span class="pub-dialog__change-kind">${prefix[f.kind]}</span>` +
+      `<span class="pub-dialog__change-path">${escapeHtml(f.path)}</span>` +
       `</li>`
     ).join('');
     const noun = files.length === 1 ? 'změna' : files.length < 5 ? 'změny' : 'změn';
     const truncNote = state.ghBaselineTruncated
-      ? '<div class="nav__git-changes-warn">strom byl při načtení zkrácen — některé soubory baseline nezná</div>'
+      ? '<div class="pub-dialog__warn">strom byl při načtení zkrácen — některé soubory baseline nezná</div>'
       : '';
     changesEl.innerHTML = `
-      <div class="nav__git-changes-count">${files.length} ${noun} k odeslání</div>
+      <div class="pub-dialog__changes-count">${files.length} ${noun} k odeslání</div>
       ${truncNote}
       <ul>${items}</ul>
     `;
@@ -1871,7 +1905,7 @@ function renderGitMenu() {
 
   collectGithubPushFiles(state.originalTree).then(renderChanges).catch((err) => {
     console.error('diff failed', err);
-    changesEl.innerHTML = '<div class="nav__git-changes-empty">chyba při čtení stromu</div>';
+    changesEl.innerHTML = '<div class="pub-dialog__changes-empty">chyba při čtení stromu</div>';
     publishBtn.disabled = true;
   });
 
@@ -1905,7 +1939,7 @@ function renderGitMenu() {
         state.githubSpec = { ...spec, token: tokenIn.value.trim() };
         await idbSetGithubSpec(state.githubSpec);
       }
-      setTimeout(() => { closeGitMenu(); renderGitMenu(); }, 1200);
+      setTimeout(() => { close(); renderPublishButton(); }, 1200);
     } catch (err) {
       console.error('push failed', err);
       statusEl.dataset.kind = 'err';
@@ -1919,16 +1953,10 @@ function renderGitMenu() {
   tokenIn?.addEventListener('keydown', onEnter);
 }
 
-function closeGitMenu() {
-  const wrap = document.querySelector('[data-nav-git]');
-  wrap?.classList.remove('is-open');
-  if (document.activeElement && wrap?.contains(document.activeElement)) document.activeElement.blur();
-}
-
 // --- zdrojové menu v navu ---------------------------------------------------
 
 export function renderSourceMenu() {
-  renderGitMenu();
+  renderPublishButton();
   const label = document.querySelector('[data-source-label]');
   const menu = document.querySelector('[data-source-menu]');
   const labelText = state.rootHandle ? state.rootHandle.name

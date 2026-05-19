@@ -1018,10 +1018,10 @@ button {
   background: color-mix(in oklab, var(--c-red) 12%, transparent);
 }
 
-/* --- nav: git sekce ------------------------------------------------------ */
-.nav__git { position: relative; outline: none; }
-.nav__git[hidden] { display: none; }
-.nav__git-btn {
+/* --- nav: Publish button ------------------------------------------------- */
+.nav__publish { position: relative; outline: none; }
+.nav__publish[hidden] { display: none; }
+.nav__publish-btn {
   font-family: var(--mono);
   font-size: 12px;
   color: var(--c-green);
@@ -1034,167 +1034,13 @@ button {
   max-width: 24vw;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.nav__git-glyph { opacity: 0.8; }
-.nav__git:hover .nav__git-btn,
-.nav__git:focus-within .nav__git-btn { filter: brightness(1.1); }
-
-.nav__git-dropdown {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 0;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px;
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-  width: min(300px, calc(100vw - 32px));
-  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
-}
-.nav__git-dropdown::before {
-  content: '';
-  position: absolute;
-  left: 0; right: 0;
-  bottom: -8px;
-  height: 8px;
-}
-.nav__git:hover .nav__git-dropdown,
-.nav__git:focus-within .nav__git-dropdown { display: flex; }
-.nav__git.is-open .nav__git-dropdown { display: flex; }
-
-.nav__git-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 4px 0;
-  font-size: 11px;
-  color: var(--muted);
-}
-.nav__git-repo {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-.nav__git-branch-switch {
-  font-size: 11px;
-  color: var(--muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
   cursor: pointer;
+  background: transparent;
+  border: none;
 }
-.nav__git-branch-switch:hover { color: var(--c-yellow); }
-
-.nav__git-changes {
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--fg);
-  max-height: 140px;
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 8px;
-  background: color-mix(in oklab, var(--fg) 3%, transparent);
-}
-.nav__git-changes-empty { color: var(--muted); font-style: italic; }
-.nav__git-changes ul { list-style: none; margin: 0; padding: 0; }
-.nav__git-changes li {
-  padding: 1px 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nav__git-changes-count {
-  color: var(--muted);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 4px;
-}
-.nav__git-changes-warn {
-  color: var(--c-orange);
-  font-size: 10px;
-  margin-bottom: 4px;
-}
-.nav__git-change { display: flex; gap: 6px; align-items: baseline; }
-.nav__git-change-kind {
-  display: inline-block;
-  width: 0.8em;
-  text-align: center;
-  font-weight: 600;
-  flex: 0 0 auto;
-}
-.nav__git-change-path { overflow: hidden; text-overflow: ellipsis; }
-.nav__git-change--mod .nav__git-change-kind { color: var(--c-yellow); }
-.nav__git-change--add .nav__git-change-kind { color: var(--c-green); }
-.nav__git-change--del .nav__git-change-kind { color: var(--c-red); }
-
-.nav__git-input,
-.nav__git-token {
-  width: 100%;
-  font: inherit;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--fg);
-  background: color-mix(in oklab, var(--fg) 5%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 6px 8px;
-  box-sizing: border-box;
-  outline: none;
-}
-.nav__git-input:focus,
-.nav__git-token:focus {
-  border-color: var(--c-green);
-  background: color-mix(in oklab, var(--c-green) 8%, transparent);
-}
-.nav__git-token-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--muted);
-  margin-bottom: 2px;
-}
-.nav__git-token-help {
-  color: var(--muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  font-size: 10px;
-}
-.nav__git-token-help:hover { color: var(--c-yellow); }
-.nav__git-token-warn {
-  margin-top: 4px;
-  font-size: 10px;
-  line-height: 1.4;
-  color: var(--muted);
-  opacity: 0.85;
-}
-
-.nav__git-status {
-  min-height: 14px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.nav__git-status[data-kind="err"] { color: var(--c-red); }
-.nav__git-status[data-kind="ok"] { color: var(--c-green); }
-
-.nav__git-publish {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 10px;
-  border: 1px solid var(--c-green);
-  border-radius: 6px;
-  background: var(--c-green);
-  color: var(--bg);
-  cursor: pointer;
-}
-.nav__git-publish:hover:not(:disabled) { filter: brightness(0.95); }
-.nav__git-publish:disabled { opacity: 0.5; cursor: default; }
+.nav__publish-glyph { opacity: 0.8; }
+.nav__publish:hover .nav__publish-btn,
+.nav__publish:focus-within .nav__publish-btn { filter: brightness(1.1); }
 
 /* --- nav na mobilu: roztáhnout ostrov ------------------------------------ */
 @media (max-width: 600px) {
@@ -1219,14 +1065,7 @@ button {
   }
   .nav__source-btn { max-width: 38vw; }
   .nav__home-btn { max-width: 32vw; }
-  .nav__git-btn { max-width: 30vw; }
-  .nav__git-dropdown {
-    position: fixed;
-    bottom: calc(60px + var(--safe-b));
-    left: 12px;
-    right: 12px;
-    width: auto;
-  }
+  .nav__publish-btn { max-width: 30vw; }
 }
 
 /* --- GitHub dialog ------------------------------------------------------- */
@@ -1439,6 +1278,153 @@ button {
   margin-left: 12px;
   flex-shrink: 0;
 }
+
+/* --- Publish dialog (universal) ----------------------------------------- */
+.pub-dialog { position: relative; }
+.pub-dialog__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+.pub-dialog__close:hover { color: var(--fg); background: color-mix(in oklab, var(--fg) 6%, transparent); }
+.pub-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.pub-dialog__repo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--fg);
+}
+.pub-dialog__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.pub-dialog__branch-sel {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--c-green);
+  background: color-mix(in oklab, var(--c-green) 8%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 6px;
+  outline: none;
+  cursor: pointer;
+  max-width: 180px;
+}
+.pub-dialog__branch-sel:focus { border-color: var(--c-green); }
+.pub-dialog__changes {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--fg);
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: color-mix(in oklab, var(--fg) 3%, transparent);
+  margin-bottom: 10px;
+}
+.pub-dialog__changes-empty { color: var(--muted); font-style: italic; }
+.pub-dialog__changes ul { list-style: none; margin: 0; padding: 0; }
+.pub-dialog__changes li {
+  padding: 1px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pub-dialog__changes-count {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.pub-dialog__change { display: flex; gap: 6px; align-items: baseline; }
+.pub-dialog__change-kind {
+  display: inline-block;
+  width: 0.8em;
+  text-align: center;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.pub-dialog__change-path { overflow: hidden; text-overflow: ellipsis; }
+.pub-dialog__change--mod .pub-dialog__change-kind { color: var(--c-yellow); }
+.pub-dialog__change--add .pub-dialog__change-kind { color: var(--c-green); }
+.pub-dialog__change--del .pub-dialog__change-kind { color: var(--c-red); }
+.pub-dialog__input {
+  width: 100%;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  box-sizing: border-box;
+  outline: none;
+  margin-bottom: 10px;
+}
+.pub-dialog__input:focus {
+  border-color: var(--c-green);
+  background: color-mix(in oklab, var(--c-green) 8%, transparent);
+}
+.pub-dialog__field { margin-bottom: 10px; }
+.pub-dialog__field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.pub-dialog__field em { font-style: normal; opacity: 0.7; }
+.pub-dialog__link {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-size: 10px;
+}
+.pub-dialog__link:hover { color: var(--c-yellow); }
+.pub-dialog__warn {
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--muted);
+  opacity: 0.9;
+}
+.pub-dialog__status {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.pub-dialog__status[data-kind="err"] { color: var(--c-red); }
+.pub-dialog__status[data-kind="ok"] { color: var(--c-green); }
 
 /* --- Tip dialog (QR Platba) ---------------------------------------------- */
 .tip-dialog {
