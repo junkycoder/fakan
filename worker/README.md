@@ -10,6 +10,7 @@ panel v prohlížeči přes WebSocket spouští skripty na serverové straně.
 |---|---|---|
 | `/api/health` | GET | health check, vrátí `{ ok, ts }` |
 | `/api/version` | GET | info o runneru |
+| `/api/quota?token=…` | GET | denní využití runů + compute ms |
 | `/api/run?token=…` | WS | WebSocket session pro spuštění skriptu |
 | `/*` | GET | static assets (SPA fallback) |
 
@@ -40,6 +41,31 @@ ci run -c "echo ahoj"
 
 V této iteraci je mock — server jen echo skript zpět jako stdout. Skutečný
 `bash` exec přijde s Cloudflare Containers v další iteraci.
+
+## Quota (iterace 8)
+
+Denní limit per token-hash v KV namespace `RUNNER_QUOTA`:
+
+- `MAX_RUNS_PER_DAY` (default 100)
+- `MAX_COMPUTE_MS_PER_DAY` (default 60 min)
+- `MAX_RUN_WALL_MS` (default 5 min per run, hard timeout)
+
+KV je **volitelný** — bez bindingu je gate vypnutý (pro lokální dev / single-user
+provoz). Pro multi-user produkci ho zapni:
+
+```bash
+wrangler kv namespace create RUNNER_QUOTA
+wrangler kv namespace create RUNNER_QUOTA --preview
+# vlož ID do wrangler.jsonc (odkomentuj kv_namespaces blok)
+```
+
+V UI:
+```
+ci quota
+# runs:     2 / 100
+# compute:  0.85 / 60 min
+# max wall: 300s per run
+```
 
 ## Nasazení
 

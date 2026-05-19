@@ -15,4 +15,20 @@
   // RUNNER_SECRET se nastavuje přes `wrangler secret put RUNNER_SECRET`
   // (ne do tohoto souboru, aby nešel commitnout). V terminálu fakanu pak
   // `ci token <stejný-secret>` uloží stejnou hodnotu do localStorage prohlížeče.
+  //
+  // KV namespace pro denní quotu (volitelné — bez něj gate vypnutý):
+  //   wrangler kv namespace create RUNNER_QUOTA
+  //   wrangler kv namespace create RUNNER_QUOTA --preview
+  // a vzniklé ID vlož sem:
+  //
+  // "kv_namespaces": [
+  //   { "binding": "RUNNER_QUOTA", "id": "<production-id>", "preview_id": "<preview-id>" }
+  // ],
+  //
+  // Limity (volitelné env vary — defaulty jsou rozumné, viz worker/quota.js):
+  // "vars": {
+  //   "MAX_RUNS_PER_DAY": "100",
+  //   "MAX_COMPUTE_MS_PER_DAY": "3600000",
+  //   "MAX_RUN_WALL_MS": "300000"
+  // }
 }

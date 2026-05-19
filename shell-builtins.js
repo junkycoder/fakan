@@ -8,7 +8,7 @@ import {
 import { SCRIPT_RUNNERS } from './shell.js';
 import {
   ciGetToken, ciSetToken, ciGetEndpoint, ciSetEndpoint,
-  ciHealth, ciVersion, ciStartRun,
+  ciHealth, ciVersion, ciQuota, ciStartRun,
 } from './ci-client.js';
 
 function fmtCwd(cwd) {
@@ -392,6 +392,7 @@ export const BUILTINS = {
       io.stdout('ci endpoint --clear     reset endpointu na default');
       io.stdout('ci health               ověř /api/health');
       io.stdout('ci version              info o runneru');
+      io.stdout('ci quota                denní využití (runs, compute)');
       return 0;
     }
 
@@ -421,6 +422,23 @@ export const BUILTINS = {
     if (sub === 'version') {
       try { io.stdout(JSON.stringify(await ciVersion())); return 0; }
       catch (e) { io.stderr('ci version: ' + (e.message || e)); return 1; }
+    }
+    if (sub === 'quota') {
+      try {
+        const q = await ciQuota();
+        if (!q.enabled) {
+          io.stdout(`quota: vypnutá (${q.reason || 'KV nenastaveno'})`);
+          io.stdout(`limity: runs/den ${q.limits.runsPerDay}, compute ${Math.round(q.limits.computeMsPerDay/60000)} min/den, max wall ${Math.round(q.limits.runWallMs/1000)}s/run`);
+          return 0;
+        }
+        const u = q.usage, l = q.limits;
+        const computeMins = (u.computeMs / 60000).toFixed(2);
+        const limMins = Math.round(l.computeMsPerDay / 60000);
+        io.stdout(`runs:     ${u.runs} / ${l.runsPerDay}`);
+        io.stdout(`compute:  ${computeMins} / ${limMins} min`);
+        io.stdout(`max wall: ${Math.round(l.runWallMs / 1000)}s per run`);
+        return 0;
+      } catch (e) { io.stderr('ci quota: ' + (e.message || e)); return 1; }
     }
 
     if (sub === 'run') {

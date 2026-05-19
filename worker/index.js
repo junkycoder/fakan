@@ -5,19 +5,25 @@
 // na serverové straně.
 //
 // MVP routes:
-//   GET   /api/health       → { ok: true }
-//   GET   /api/version      → { worker, runner }
-//   WS    /api/run?token=…  → WebSocket session, klient pošle
-//                              { type: 'start', script }, server streamuje
-//                              { type: 'stdout'|'stderr', line }, na konci
-//                              { type: 'exit', code }.
+//   GET   /api/health         → { ok: true }
+//   GET   /api/version        → { worker, runner }
+//   GET   /api/quota?token=…  → { usage, limits } — denní využití
+//   WS    /api/run?token=…    → WebSocket session, klient pošle
+//                                { type: 'start', script }, server streamuje
+//                                { type: 'stdout'|'stderr', line }, na konci
+//                                { type: 'exit', code }.
 //
 // Auth pro `/api/run`: ?token=<secret> proti env.RUNNER_SECRET (nastavený
 // přes `wrangler secret put RUNNER_SECRET`). Browser nemá custom WS header,
 // proto query string. Constant-time compare.
 //
+// Quota (iterace 8): denní cap na runů a compute ms per token-hash v KV
+// namespace `RUNNER_QUOTA`. Pokud KV chybí (lokální dev), gate je vypnutý.
+//
 // Runner v této iteraci je MOCK: echo skript zpět do streamu. Skutečný
 // `bash` přijde s Cloudflare Containers v další iteraci.
+
+import { quotaCheck, quotaBump, quotaIdent, quotaLimits, quotaRead } from './quota.js';
 
 const ALLOWED_ORIGINS = new Set([
   'https://fakan.cz',
@@ -56,10 +62,30 @@ async function handleApi(request, env, url) {
   if (url.pathname === '/api/version') {
     return json({ worker: 'fakan-cz', runner: 'mock', version: 1 });
   }
+  if (url.pathname === '/api/quota') {
+    return handleQuota(request, env, url);
+  }
   if (url.pathname === '/api/run') {
     return handleRun(request, env, url);
   }
   return new Response('not found', { status: 404 });
+}
+
+async function handleQuota(request, env, url) {
+  if (!env.RUNNER_SECRET) {
+    return json({ enabled: false, reason: 'RUNNER_SECRET není nastaven' }, { status: 503 });
+  }
+  const token = url.searchParams.get('token') || '';
+  if (!constantTimeEqual(token, env.RUNNER_SECRET)) {
+    return new Response('unauthorized', { status: 401 });
+  }
+  const ident = await quotaIdent(token);
+  const limits = quotaLimits(env);
+  if (!env.RUNNER_QUOTA) {
+    return json({ enabled: false, limits, reason: 'RUNNER_QUOTA KV nenastaveno' });
+  }
+  const usage = await quotaRead(env, ident);
+  return json({ enabled: true, usage, limits });
 }
 
 function json(obj, init = {}) {
@@ -85,6 +111,13 @@ async function handleRun(request, env, url) {
     return new Response('unauthorized', { status: 401 });
   }
 
+  // Quota gate (před acceptem WS, ať klient dostane HTTP 429 a vidí důvod).
+  const ident = await quotaIdent(token);
+  const gate = await quotaCheck(env, ident);
+  if (!gate.ok) {
+    return json({ error: 'quota', reason: gate.reason, usage: gate.usage, limits: gate.limits }, { status: 429 });
+  }
+
   const pair = new WebSocketPair();
   const client = pair[0];
   const server = pair[1];
@@ -92,6 +125,11 @@ async function handleRun(request, env, url) {
 
   let killed = false;
   let started = false;
+  let startedAt = 0;
+  const limits = gate.limits;
+
+  // Hard wall-clock timeout — i mock runner musí mít cap, ať CPU nepoteče.
+  let timeoutHandle = null;
 
   server.addEventListener('message', async (event) => {
     let msg;
@@ -111,19 +149,36 @@ async function handleRun(request, env, url) {
         return;
       }
       started = true;
+      startedAt = Date.now();
+      timeoutHandle = setTimeout(() => {
+        if (killed) return;
+        killed = true;
+        const secs = Math.round(limits.runWallMs / 1000);
+        send(server, { type: 'stderr', line: `timeout: překročen limit ${secs}s` });
+        send(server, { type: 'exit', code: 124 });
+        try { server.close(1001, 'timeout'); } catch {}
+      }, limits.runWallMs);
       try {
         await runMock(String(msg.script || ''), server, () => killed);
       } catch (e) {
         send(server, { type: 'stderr', line: 'runner error: ' + (e && e.message ? e.message : e) });
         send(server, { type: 'exit', code: 1 });
       }
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (!killed) {
         try { server.close(1000, 'done'); } catch {}
       }
+      // bump usage (i pro killed runy — počítají compute time)
+      try {
+        await quotaBump(env, ident, 1, Date.now() - startedAt);
+      } catch {}
     }
   });
 
-  server.addEventListener('close', () => { killed = true; });
+  server.addEventListener('close', () => {
+    killed = true;
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  });
 
   return new Response(null, { status: 101, webSocket: client });
 }

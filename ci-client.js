@@ -56,6 +56,16 @@ export async function ciVersion() {
   return await res.json();
 }
 
+export async function ciQuota() {
+  const token = ciGetToken();
+  if (!token) throw new Error('chybí token');
+  const u = new URL(endpointBase() + '/api/quota');
+  u.searchParams.set('token', token);
+  const res = await fetch(u.toString(), { cache: 'no-store' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
 // Spustí WS run. Callbacks: onMessage({type, line, code}), onError(err), onClose(ev).
 // Vrací { kill(), wait() }, kde wait() resolves s exit code (0 default).
 export function ciStartRun(script, opts = {}) {
