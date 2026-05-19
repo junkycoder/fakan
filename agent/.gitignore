@@ -1,0 +1,4 @@
+fakan-agent
+fakan-agent-*
+*.test
+*.out

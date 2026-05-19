@@ -4,7 +4,8 @@
 
 .DEFAULT_GOAL := help
 .PHONY: help dev serve build deploy clean test test-ui promo report \
-        ios ios-devices install-tests
+        ios ios-devices install-tests \
+        agent agent-linux-arm64 agent-linux-amd64 agent-darwin-arm64 agent-all
 
 PORT ?= 5173
 TARGET ?=
@@ -60,3 +61,20 @@ ios: ## Build + sync + spustit na iOS zařízení (TARGET=<id> volitelně; bez n
 
 ios-devices: ## Vypsat spárovaná zařízení a simulátory (zkopíruj ID do TARGET=)
 	cd mobile && npx cap run ios --list
+
+# ── fakan-agent (Go binary pro tunel na vlastní stroj) ────────────────────────
+
+agent: ## Build fakan-agent pro aktuální platformu → agent/fakan-agent
+	cd agent && go build -o fakan-agent ./...
+	@echo "Hotovo: agent/fakan-agent"
+
+agent-linux-arm64: ## Cross-build pro Raspberry Pi 4/5 (linux/arm64)
+	cd agent && GOOS=linux GOARCH=arm64 go build -o fakan-agent-linux-arm64 ./...
+
+agent-linux-amd64: ## Cross-build pro klasický Linux server (linux/amd64)
+	cd agent && GOOS=linux GOARCH=amd64 go build -o fakan-agent-linux-amd64 ./...
+
+agent-darwin-arm64: ## Cross-build pro Apple Silicon Mac
+	cd agent && GOOS=darwin GOARCH=arm64 go build -o fakan-agent-darwin-arm64 ./...
+
+agent-all: agent-linux-arm64 agent-linux-amd64 agent-darwin-arm64 ## Vše najednou
