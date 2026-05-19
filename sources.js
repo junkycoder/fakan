@@ -2296,8 +2296,10 @@ function showHelpDialog() {
           <tr><td>ve vimu <kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>suspend editoru → skok do terminálu (jako bash)</td></tr>
           <tr><td>v terminálu <code>fg</code></td><td>návrat do suspendovaného editoru</td></tr>
           <tr><td>v terminálu <kbd>↑</kbd> / <kbd>↓</kbd></td><td>historie (sdílená napříč terminály a sessions)</td></tr>
+          <tr><td>v terminálu <kbd>Tab</kbd></td><td>doplnit příkaz (první slovo) nebo cestu</td></tr>
           <tr><td>v terminálu <kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>clear obrazovky</td></tr>
           <tr><td>v terminálu <kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>zruš rozepsaný řádek</td></tr>
+          <tr><td>v terminálu <kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>EOF — na prázdném inputu zavře terminál (jako bash)</td></tr>
         </table>
         <p>Vestavěné příkazy: <code>pwd</code>, <code>cd</code>, <code>ls</code>, <code>cat</code>,
         <code>echo</code>, <code>head</code>, <code>tail</code>, <code>wc</code>,
