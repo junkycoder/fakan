@@ -1,13 +1,18 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "fakan-cz",
+  "main": "worker/index.js",
   "compatibility_date": "2026-05-18",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application"
   },
   "observability": {
     "enabled": true
   }
+  // RUNNER_SECRET se nastavuje přes `wrangler secret put RUNNER_SECRET`
+  // (ne do tohoto souboru, aby nešel commitnout). V terminálu fakanu pak
+  // `ci token <stejný-secret>` uloží stejnou hodnotu do localStorage prohlížeče.
 }

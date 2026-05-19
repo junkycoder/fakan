@@ -6,6 +6,10 @@ import {
   mkdir, mkdirP, touchFile, removePath, writeFile, copyFile, movePath,
 } from './shell-fs.js';
 import { SCRIPT_RUNNERS } from './shell.js';
+import {
+  ciGetToken, ciSetToken, ciGetEndpoint, ciSetEndpoint,
+  ciHealth, ciVersion, ciStartRun,
+} from './ci-client.js';
 
 function fmtCwd(cwd) {
   const c = normalizeCwd(cwd);
@@ -169,6 +173,7 @@ export const BUILTINS = {
     io.stdout('Globs:    *.md  ·  blog/*.html');
     io.stdout('Joby:     ve vimu Ctrl+Z = suspend  ·  fg = návrat  ·  jobs');
     io.stdout('Fakan:    open <p>  vim <p>  preview <p>  dock <z>  panels  recenter');
+    io.stdout('CI:       ci run <p>  ·  ci run -c "<…>"  ·  ci token <s>  ·  ci health');
     io.stdout('Shell:    alias name=val  ·  unalias  ·  history  ·  export VAR=val');
     io.stdout('Rc:       ~/.fakanrc  — auto-source při startu terminálu');
     return 0;
@@ -374,6 +379,84 @@ export const BUILTINS = {
     const target = args[0] != null ? resolvePath(session.cwd, args[0]) : '';
     fn(target);
     return 0;
+  },
+
+  async ci(args, session, io) {
+    const sub = args[0];
+    if (!sub || sub === 'help') {
+      io.stdout('ci run <script.sh>      spustí soubor v CI runneru');
+      io.stdout('ci run -c "<inline>"    spustí inline skript');
+      io.stdout('ci token <secret>       nastav bearer token (uloží do localStorage)');
+      io.stdout('ci token --clear        smaž token');
+      io.stdout('ci endpoint <url>       alternativní endpoint (default same origin)');
+      io.stdout('ci endpoint --clear     reset endpointu na default');
+      io.stdout('ci health               ověř /api/health');
+      io.stdout('ci version              info o runneru');
+      return 0;
+    }
+
+    if (sub === 'token') {
+      if (args[1] == null) {
+        io.stdout(ciGetToken() ? 'token nastaven (skryto)' : 'token NEnastaven');
+        return 0;
+      }
+      if (args[1] === '--clear') { ciSetToken(''); io.stdout('token smazán'); return 0; }
+      ciSetToken(args[1]);
+      io.stdout('token uložen do localStorage');
+      return 0;
+    }
+
+    if (sub === 'endpoint') {
+      if (args[1] == null) { io.stdout(ciGetEndpoint() || '(default — current origin)'); return 0; }
+      if (args[1] === '--clear') { ciSetEndpoint(''); io.stdout('endpoint reset na default'); return 0; }
+      ciSetEndpoint(args[1]);
+      io.stdout('endpoint uložen: ' + args[1]);
+      return 0;
+    }
+
+    if (sub === 'health') {
+      try { io.stdout('OK · ' + JSON.stringify(await ciHealth())); return 0; }
+      catch (e) { io.stderr('ci health: ' + (e.message || e)); return 1; }
+    }
+    if (sub === 'version') {
+      try { io.stdout(JSON.stringify(await ciVersion())); return 0; }
+      catch (e) { io.stderr('ci version: ' + (e.message || e)); return 1; }
+    }
+
+    if (sub === 'run') {
+      let script;
+      if (args[1] === '-c') {
+        script = args.slice(2).join(' ');
+        if (!script) { io.stderr('ci run -c: chybí skript'); return 2; }
+      } else {
+        if (!args[1]) { io.stderr('ci run: čeká cestu k .sh nebo -c "<inline>"'); return 2; }
+        const p = resolvePath(session.cwd, args[1]);
+        const s = stat(p);
+        if (!s) { io.stderr(`ci run: ${args[1]}: neexistuje`); return 1; }
+        if (s.type !== 'file') { io.stderr(`ci run: ${args[1]}: není soubor`); return 1; }
+        const text = await readFile(p);
+        if (text == null) { io.stderr(`ci run: ${args[1]}: nelze přečíst`); return 1; }
+        script = text;
+      }
+      let handle;
+      try {
+        handle = ciStartRun(script, {
+          onMessage: (m) => {
+            if (m.type === 'stdout') io.stdout(m.line);
+            else if (m.type === 'stderr') io.stderr(m.line);
+          },
+          onError: (e) => io.stderr('CI WS error: ' + (e && e.message ? e.message : 'connection failed')),
+        });
+      } catch (e) {
+        io.stderr('ci run: ' + (e.message || e));
+        return 1;
+      }
+      const code = await handle.wait();
+      return typeof code === 'number' ? code : 0;
+    }
+
+    io.stderr(`ci: neznámý subcommand "${sub}". Zkuste \`ci help\`.`);
+    return 2;
   },
 
   mkdir(args, session, io) {
