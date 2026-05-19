@@ -1737,6 +1737,63 @@ function renderPublishButton() {
   }
 }
 
+// --- Mobile srcbar collapse ------------------------------------------------
+// Na úzkém viewportu se srcbar default zabalí do malého „zdroj" tlačítka.
+// Tap rozbalí (`.is-open`), focusout / tap mimo zabalí.
+function mountSrcbarToggle() {
+  const bar = document.getElementById('srcbar');
+  if (!bar || bar.dataset.boundToggle) return;
+  bar.dataset.boundToggle = '1';
+
+  const toggle = bar.querySelector('[data-srcbar-toggle]');
+  if (!toggle) return;
+
+  const open = () => {
+    bar.classList.add('is-open');
+    toggle.setAttribute('aria-expanded', 'true');
+    // dej focus na první akční prvek, ať focusout funguje konzistentně
+    const focusTarget = bar.querySelector('.srcbar__source-btn');
+    focusTarget?.focus({ preventScroll: true });
+  };
+  const close = () => {
+    bar.classList.remove('is-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    // zavři i případně otevřené dropdowny
+    bar.querySelectorAll('.is-open').forEach((el) => { if (el !== bar) el.classList.remove('is-open'); });
+  };
+
+  toggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    if (bar.classList.contains('is-open')) close(); else open();
+  });
+
+  // Klik mimo srcbar = zabalit
+  document.addEventListener('pointerdown', (e) => {
+    if (!bar.classList.contains('is-open')) return;
+    if (bar.contains(e.target)) return;
+    close();
+  });
+
+  // focusout (Tab pryč) = zabalit, pokud focus skutečně opouští bar
+  bar.addEventListener('focusout', (e) => {
+    if (!bar.classList.contains('is-open')) return;
+    const next = e.relatedTarget;
+    if (next && bar.contains(next)) return;
+    // malé zpoždění, aby případný klik na dropdown item nedal zavřít před akcí
+    setTimeout(() => {
+      if (!bar.contains(document.activeElement)) close();
+    }, 0);
+  });
+
+  // Esc zabalí
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (!bar.classList.contains('is-open')) return;
+    close();
+    toggle.focus({ preventScroll: true });
+  });
+}
+
 // --- Branch picker v top-left srcbaru -------------------------------------
 function renderBranchPicker() {
   const wrap = document.querySelector('[data-nav-branch]');
@@ -1998,6 +2055,7 @@ function showGithubPublishDialog() {
 // --- zdrojové menu v navu ---------------------------------------------------
 
 export function renderSourceMenu() {
+  mountSrcbarToggle();
   renderPublishButton();
   renderBranchPicker();
   const label = document.querySelector('[data-source-label]');

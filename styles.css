@@ -902,6 +902,10 @@ button {
 .srcbar__branch[hidden],
 .srcbar__publish[hidden] { display: none; }
 
+/* Toggle pill (jen mobil) — schovaný na desktopu. */
+.srcbar__toggle { display: none; }
+.srcbar__toggle-glyph { opacity: 0.85; }
+
 .srcbar__source-btn,
 .srcbar__branch-btn,
 .srcbar__publish-btn {
@@ -1114,7 +1118,32 @@ button {
   }
   .nav__home-btn { max-width: 32vw; }
 
-  /* srcbar — užší label, ať se vejde i s větví a publishem */
+  /* srcbar na mobilu se zabalí do malého „zdroj" tlačítka.
+     Rozbalení překryje pravý badge — vyšší z-index, otevřené nad ostatním. */
+  .srcbar { z-index: 30; }
+  .srcbar__toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    background: color-mix(in oklab, var(--bg) 80%, transparent);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  .srcbar__source,
+  .srcbar__branch,
+  .srcbar__publish { display: none; }
+  .srcbar.is-open .srcbar__source { display: block; }
+  .srcbar.is-open .srcbar__branch:not([hidden]) { display: block; }
+  .srcbar.is-open .srcbar__publish:not([hidden]) { display: block; }
+  .srcbar.is-open .srcbar__toggle { display: none; }
+
   .srcbar__source-label { max-width: 38vw; }
   .srcbar__branch-label { max-width: 16vw; }
   .srcbar__publish-label { max-width: 16vw; }
