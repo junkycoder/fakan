@@ -323,8 +323,9 @@ function sourceBody(node) {
     return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
   }
   if (node.type === 'dir') {
-    // dir v src módu = mc nad tou složkou. Play (rendered) zůstává index.html iframe.
-    return `<div class="mc-mount" data-mc-mount data-mc-cwd="${escapeHtml(node.path || '')}"></div>`;
+    // bez entry souboru se panel pro složku neotevírá (viz resolveOpenable);
+    // tahle větev je jen fallback, kdyby se uzel dostal sem jinou cestou.
+    return '<p class="panel__note empty">Žádný entry soubor k zobrazení.</p>';
   }
   if (node.kind === 'web') {
     const url = node.url || '';
@@ -398,6 +399,29 @@ function dirIndexHtml(node) {
   // raw může chybět (statický deploy bez inline contentu) — v takovém případě
   // se použije idx.path přímo v iframe src.
   return idx;
+}
+
+// Entry file pro složku — README.md, readme.md, index.md, index.html (v tomhle
+// pořadí). Vrací file uzel nebo null. Klik na složku tohle resolvne a otevře
+// místo složky; když nic z toho není, panel se neotevře.
+const DIR_ENTRY_NAMES = ['README.md', 'readme.md', 'Readme.md', 'index.md', 'index.html', 'index.htm'];
+export function dirEntryFile(node) {
+  if (!node) return null;
+  if (node.type !== 'dir' && node.type !== 'root') return null;
+  const base = node.path || '';
+  const prefix = base ? base + '/' : '';
+  for (const name of DIR_ENTRY_NAMES) {
+    const found = state.byPath.get(prefix + name);
+    if (found && found.type === 'file') return found;
+  }
+  return null;
+}
+
+// Pro openMain/openAsFollower: složku přesměruj na entry file, jinak null = nic.
+function resolveOpenable(node) {
+  if (!node) return null;
+  if (node.type === 'dir' || node.type === 'root') return dirEntryFile(node);
+  return node;
 }
 
 function canBuild(node) {
@@ -1119,8 +1143,10 @@ export function closeAllPreviews() {
 
 // Shift varianta: zavři všechny preview, otevři jen main (= jediné okno).
 export function openMainOnly(node) {
+  const resolved = resolveOpenable(node);
+  if (!resolved) return;
   closeAllPreviews();
-  openMain(node);
+  openMain(resolved);
 }
 
 // --- job control: Ctrl+Z ↔ fg ---------------------------------------------
@@ -1211,6 +1237,8 @@ export function maybeOpenDefaultIndex() {
 }
 
 export function openMain(node) {
+  node = resolveOpenable(node);
+  if (!node) return null;
   if (state.mainPanel) {
     if (state.mainPanel === state.activePanel) state.activePanel = null;
     state.mainPanel.element.remove();
@@ -1255,6 +1283,8 @@ export function openPreview(node) {
 
 // preview, který sleduje focus (otevřený mezerníkem, měněný šipkami)
 export function openAsFollower(node) {
+  node = resolveOpenable(node);
+  if (!node) return;
   const path = node.path || '/';
 
   // už je follower na tomhle uzlu? jen do popředí
