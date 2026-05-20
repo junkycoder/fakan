@@ -11,6 +11,7 @@ import {
   ciHealth, ciVersion, ciQuota, ciStartRun,
   ciTunnelPair, ciTunnelClaim, ciTunnelMachines, ciTunnelRevoke, ciTunnelStartRun,
 } from './ci-client.js';
+import { gitCmd } from './shell-git.js';
 
 function fmtCwd(cwd) {
   const c = normalizeCwd(cwd);
@@ -273,6 +274,7 @@ export const BUILTINS = {
     io.stdout('Joby:     ve vimu Ctrl+Z = suspend  ·  fg = návrat  ·  jobs');
     io.stdout('Fakan:    open <p>  vim <p>  preview <p>  dock <z>  panels  recenter  mc');
     io.stdout('CI:       ci run <p>  ·  ci run -c "<…>"  ·  ci token <s>  ·  ci health');
+    io.stdout('Git:      git status / log / commit -m / push / pull / fetch / branch / checkout');
     io.stdout('Shell:    alias name=val  ·  unalias  ·  history  ·  export VAR=val');
     io.stdout('Rc:       ~/.fakanrc  — auto-source při startu terminálu');
     return 0;
@@ -493,6 +495,10 @@ export const BUILTINS = {
     }
     fn({ cwd: startCwd });
     return 0;
+  },
+
+  async git(args, session, io) {
+    return await gitCmd(args, session, io);
   },
 
   async ci(args, session, io) {
