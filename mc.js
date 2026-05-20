@@ -366,8 +366,10 @@ export function mountMc(host, opts = {}) {
       renderAll();
       return;
     }
-    if (e.key === 'ArrowUp')   { e.preventDefault(); moveCursor(-1); return; }
-    if (e.key === 'ArrowDown') { e.preventDefault(); moveCursor(+1); return; }
+    if (e.key === 'ArrowUp'   || e.key === 'k') { e.preventDefault(); moveCursor(-1); return; }
+    if (e.key === 'ArrowDown' || e.key === 'j') { e.preventDefault(); moveCursor(+1); return; }
+    if (e.key === 'h') { e.preventDefault(); goParent(); return; }
+    if (e.key === 'l') { e.preventDefault(); enterEntry(); return; }
     if (e.key === 'PageUp')    { e.preventDefault(); moveCursor(-session.visibleRows + 1); return; }
     if (e.key === 'PageDown')  { e.preventDefault(); moveCursor(+session.visibleRows - 1); return; }
     if (e.key === 'Home')      { e.preventDefault(); jumpCursor('home'); return; }
