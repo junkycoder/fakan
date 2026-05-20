@@ -14,6 +14,7 @@ import {
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
 import { mountStats } from './stats.js';
 import { setupDragDrop, shouldSuppressClick } from './dragdrop.js';
+import { setupShakeToTerminal } from './shake.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -72,6 +73,7 @@ export async function boot() {
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
 
   setupDragDrop();
+  setupShakeToTerminal();
   setupDropZone();
   renderSourceMenu();
   mountBadge();
