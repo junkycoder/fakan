@@ -1214,7 +1214,8 @@ export function mountEditor(host, opts = {}) {
     if (e.key === 'ArrowDown') { moveDown(); return true; }
     if (e.key === 'Home') { moveLineStart(); return true; }
     if (e.key === 'End') { state.cursor.col = state.lines[state.cursor.row].length; return true; }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    // Alt/Option nefiltrujeme — na Macu (a CZ layoutu) skrz něj jdou znaky jako *,#,~…
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       snapshot();
       insertChar(e.key);
       return true;
@@ -1298,7 +1299,7 @@ export function mountEditor(host, opts = {}) {
       state.cmdline = state.cmdline.slice(0, -1);
       return true;
     }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       state.cmdline += e.key;
       return true;
     }
@@ -1319,7 +1320,7 @@ export function mountEditor(host, opts = {}) {
       state.cmdline = state.cmdline.slice(0, -1);
       return true;
     }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
       state.cmdline += e.key;
       return true;
     }
