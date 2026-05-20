@@ -48,6 +48,7 @@ tests/
 - **State hook** — [main.js](../main.js) exposuje `window.__fakan = { state }`. Testy z něj čtou `focusedPath`, `currentRootPath`, `treeNodes`, `mainPanel`, `previewPanels`, `followerPanel`. Žádný runtime cost v produkci.
 - **DOM selektory** — výhradně přes `data-*` atributy v aplikaci. Žádné `.querySelector` s class-name spoléháním.
 - **Visual regression** — vypnutý default, opt-in přes `toHaveScreenshot` s tolerancí `maxDiffPixelRatio: 0.02`.
+- **GitHub mock fixture** — [utils/github-mock.js](utils/github-mock.js) routuje `api.github.com` + `raw.githubusercontent.com` na deterministický mini-strom. `bootApp(page)` ho nasazuje by default; pro live GitHub volej `bootApp(page, { liveGithub: true })`. Mock dramaticky zrychluje běh (sekundy místo minut) a eliminuje rate-limit / offline faily.
 
 ## Promo screenshoty
 
@@ -61,7 +62,7 @@ Regenerace po UI změně: `npm run promo`. Commit změněných PNG.
 
 ## CI
 
-Není nastavené. Když budete chtít: Playwright má oficiální `microsoft/playwright-github-action`, stačí přidat `.github/workflows/test.yml`. Webserver běží `python3` — runner ho má v default image.
+[.github/workflows/test.yml](../.github/workflows/test.yml) — chromium na push do `main` a na každý PR, při selhání uploadne `playwright-report` artefakt. Mock GitHub fixturu používá automaticky (žádný token v CI není potřeba).
 
 ## Známé limity
 

@@ -6,6 +6,7 @@ import {
   openMain, openMainOnly, openAsFollower, openTerminalPanel,
   closePanel, toggleMax, dockPanel, bringToFront, setActive, getAllPanels,
 } from './panels.js';
+import { showSearchDialog } from './search.js';
 
 function findNeighbor(current, direction, nodes) {
   const cx = current.col + current.name.length / 2;
@@ -116,6 +117,15 @@ export function setupKeyboard(_unused, vp) {
       if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyT') {
         e.preventDefault();
         openTerminalPanel();
+        return;
+      }
+      // Cmd/Ctrl+K = otevři globální hledání. Globální zkratka (funguje i z inputů,
+      // ale ne uvnitř search dialogu samotného — ten má hodnotu jako search input
+      // a kliknul by sám na sebe; pojistka přes Esc-close + re-open je triviální).
+      if (mod && !e.shiftKey && !e.altKey && e.code === 'KeyK') {
+        if (document.querySelector('[data-search-dialog]')) return;
+        e.preventDefault();
+        showSearchDialog();
         return;
       }
     }

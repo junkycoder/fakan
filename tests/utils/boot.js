@@ -1,21 +1,29 @@
 // Sdílené helpery pro testy. Vše předpokládá Playwright `page` object.
 import { expect } from '@playwright/test';
 import { SEL } from './selectors.js';
+import { installGithubMock } from './github-mock.js';
 
 /**
  * Načte root URL a počká, až je mindmapa kompletně vyrendrovaná
  * (tree.json načten, #map má text, #labels má aspoň jeden uzel).
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {{ liveGithub?: boolean, mockOpts?: object }} [opts]
+ *   - liveGithub: true → nepřidává mock, jde proti reálnému GitHub API (rate-limit risk).
+ *     Když je FAKAN_GH_TOKEN v env, použije se Authorization header (5000/h).
+ *   - mockOpts: předá se do installGithubMock (tree, files override).
  */
-export async function bootApp(page) {
-  // V CI / lokálu bez tokenu GitHub rate-limituje (60/h pro neauth) a default-source
-  // load failuje. Pokud je FAKAN_GH_TOKEN v env, přidá ho do api.github.com requestů
-  // přes route interceptor — auth limit je 5000/h.
-  const token = process.env.FAKAN_GH_TOKEN;
-  if (token) {
-    await page.route(/api\.github\.com|raw\.githubusercontent\.com/, async (route) => {
-      const headers = { ...route.request().headers(), authorization: `Bearer ${token}` };
-      await route.continue({ headers });
-    });
+export async function bootApp(page, opts = {}) {
+  if (opts.liveGithub) {
+    const token = process.env.FAKAN_GH_TOKEN;
+    if (token) {
+      await page.route(/api\.github\.com|raw\.githubusercontent\.com/, async (route) => {
+        const headers = { ...route.request().headers(), authorization: `Bearer ${token}` };
+        await route.continue({ headers });
+      });
+    }
+  } else {
+    await installGithubMock(page, opts.mockOpts);
   }
   await page.goto('/');
   await waitForMindmap(page);

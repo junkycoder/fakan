@@ -30,4 +30,22 @@ export const SEL = {
   vimMount: '[data-vim-mount]',
   hit: '.hit',
   label: '.labels [data-node-path]',
+  // Search dialog
+  searchBtn: '[data-search-btn]',
+  searchDialog: '[data-search-dialog]',
+  searchInput: '[data-search-input]',
+  searchStatus: '[data-search-status]',
+  searchResults: '[data-search-results]',
+  searchResult: '.search-dialog__result',
+  searchResultActive: '.search-dialog__result.is-active',
+  searchClose: '[data-search-close]',
+  // Terminál
+  termMount: '[data-terminal-mount]',
+  termScroll: '[data-term-scroll]',
+  termPrompt: '[data-term-prompt]',
+  termInput: '[data-term-input]',
+  // Nav / source menu
+  navSourceWrap: '[data-nav-source]',
+  sourceLabel: '[data-source-label]',
+  srcbarItem: '.srcbar__item',
 };
