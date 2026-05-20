@@ -9,7 +9,7 @@ import {
   LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
-  applyTreeOps, clearGhBaseline, gitBlobSha, saveTreeOps,
+  applyTreeOps, setGhBaseline, clearGhBaseline, gitBlobSha, saveTreeOps,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain, maybeOpenDefaultIndex } from './panels.js';
@@ -753,6 +753,30 @@ async function loadFromGithub(spec, onStatus) {
 
   note(`stahuji obsah (${filePromises.length})…`);
   await pLimitAll(filePromises, 8);
+
+  // Naplníme baseline: path → blob SHA pro všechny textové soubory, které jsme
+  // namountovali. Bez tohohle by collectGithubPushFiles vracel [] a Publish /
+  // `git status` by žádné změny nikdy nedetekovaly.
+  const baselineSha = new Map();
+  const baselinePaths = new Set();
+  for (const e of entries) {
+    if (e.type !== 'blob' || !e.path) continue;
+    if (depthOf(e.path) > MAX_DEPTH) continue;
+    if (isPathHidden(e.path)) continue;
+    if (isGitignored(e.path, false, gitignores)) continue;
+    const name = e.path.split('/').pop();
+    const [, ext] = splitExt(name);
+    if (!isTextFile(name, ext)) continue;
+    baselineSha.set(e.path, e.sha);
+    baselinePaths.add(e.path);
+  }
+  setGhBaseline({
+    key: `${spec.owner}/${spec.repo}@${spec.branch || 'main'}`,
+    sha: baselineSha,
+    paths: baselinePaths,
+    truncated: !!data.truncated,
+  });
+
   return root;
 }
 
