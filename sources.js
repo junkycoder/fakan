@@ -2447,12 +2447,12 @@ export function renderSourceMenu() {
   const canFsAccess = typeof window.showDirectoryPicker === 'function';
   const items = [];
   items.push({
-    label: 'Nahrát složku (lokálně)',
+    label: 'Nahrát složku (v prohlížeči)',
     onClick: openUploadPicker,
     title: 'Nahraje složku do paměti prohlížeče. Edity se ukládají jen lokálně, pro persistenci stáhněte ZIP.',
   });
   items.push({
-    label: 'Připojit složku (na disku)',
+    label: 'Připojit složku (z disku)',
     onClick: canFsAccess ? openDirectoryPicker : null,
     disabled: !canFsAccess,
     title: canFsAccess
