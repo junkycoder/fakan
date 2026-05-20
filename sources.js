@@ -1655,10 +1655,29 @@ async function writeToFileHandle(fileHandle, text) {
   finally { await w.close(); }
 }
 
+// Rekurzivní kopie FSA entry (file nebo dir) — FSA nemá portable move().
+async function copyFsEntry(srcHandle, dstParent, dstName) {
+  if (srcHandle.kind === 'file') {
+    const file = await srcHandle.getFile();
+    const buf = await file.arrayBuffer();
+    const dstFile = await dstParent.getFileHandle(dstName, { create: true });
+    const w = await dstFile.createWritable();
+    try { await w.write(buf); } finally { await w.close(); }
+    return;
+  }
+  if (srcHandle.kind === 'directory') {
+    const dstDir = await dstParent.getDirectoryHandle(dstName, { create: true });
+    for await (const [name, child] of srcHandle.entries()) {
+      await copyFsEntry(child, dstDir, name);
+    }
+  }
+}
+
 // Sesbírá přehled změn (pro dialog před uložením). Bez side-effects.
 export function collectDirChangesSummary() {
   const adds = [];     // { path, kind: 'file'|'dir' } - nově vytvořené přes treeOps
   const removes = [];  // { path } - smazané přes treeOps
+  const moves = [];    // { src, dst } - přesunuté přes treeOps
   const mods = [];     // { path } - LS edit overlay
   for (const op of state.treeOps || []) {
     if (op.op === 'rm') removes.push({ path: op.path });
@@ -1666,6 +1685,7 @@ export function collectDirChangesSummary() {
       const full = ((op.parent || '').split('/').filter(Boolean)).concat([op.name]).join('/');
       adds.push({ path: full, kind: op.isDir ? 'dir' : 'file' });
     }
+    else if (op.op === 'mv') moves.push({ src: op.src, dst: op.dst });
   }
   const addPaths = new Set(adds.filter((a) => a.kind === 'file').map((a) => a.path));
   for (const key of collectEditOverlayKeys()) {
@@ -1673,7 +1693,7 @@ export function collectDirChangesSummary() {
     if (!path || addPaths.has(path)) continue; // nová stuff jde do adds
     mods.push({ path });
   }
-  return { adds, removes, mods };
+  return { adds, removes, moves, mods };
 }
 
 // Vrací { written, removed, dirsCreated, errors[] }
@@ -1685,10 +1705,37 @@ export async function saveLocalEditsToFS({ onStatus } = {}) {
   let written = 0;
   let removed = 0;
   let dirsCreated = 0;
+  let moved = 0;
   const errors = [];
 
-  // 1) treeOps: 'rm' (mažeme nejdřív kvůli možnému re-create se stejným jménem)
+  // 0) treeOps: 'mv' (předchází rm/write — zápis edit overlay už používá nové cesty)
   const ops = (state.treeOps || []).slice();
+  for (const op of ops.filter((o) => o.op === 'mv')) {
+    const src = op.src || '';
+    const dst = op.dst || '';
+    if (!src || !dst || src === dst) continue;
+    try {
+      status(`přesouvám ${src} → ${dst}`);
+      const srcParts = src.split('/').filter(Boolean);
+      const srcName = srcParts.pop();
+      const srcParent = await resolveDirHandle(root, srcParts, { create: false });
+      let srcHandle;
+      try { srcHandle = await srcParent.getFileHandle(srcName); }
+      catch { srcHandle = await srcParent.getDirectoryHandle(srcName); }
+
+      const dstParts = dst.split('/').filter(Boolean);
+      const dstName = dstParts.pop();
+      const dstParent = await resolveDirHandle(root, dstParts, { create: true });
+
+      await copyFsEntry(srcHandle, dstParent, dstName);
+      await srcParent.removeEntry(srcName, { recursive: true });
+      moved++;
+    } catch (e) {
+      errors.push({ path: `${src} → ${dst}`, op: 'mv', err: e.message });
+    }
+  }
+
+  // 1) treeOps: 'rm' (mažeme nejdřív kvůli možnému re-create se stejným jménem)
   for (const op of ops.filter((o) => o.op === 'rm')) {
     try {
       const parts = (op.path || '').split('/').filter(Boolean);
@@ -1773,7 +1820,7 @@ export async function saveLocalEditsToFS({ onStatus } = {}) {
   }
 
   try { window.dispatchEvent(new CustomEvent('fakan:tree-changed')); } catch {}
-  return { written, removed, dirsCreated, errors };
+  return { written, removed, dirsCreated, moved, errors };
 }
 
 async function readNodeBytes(node, path) {
@@ -2294,7 +2341,7 @@ function showDirSaveDialog() {
   const name = state.rootHandle?.name || 'složka';
   const { body, close } = buildDialogShell(`Uložit změny do ${name}`);
   const sum = collectDirChangesSummary();
-  const total = sum.adds.length + sum.removes.length + sum.mods.length;
+  const total = sum.adds.length + sum.removes.length + sum.mods.length + (sum.moves?.length || 0);
 
   const renderChangeList = () => {
     if (!total) return `<div class="pub-dialog__changes-empty">Žádné lokální změny.</div>`;
@@ -2302,6 +2349,7 @@ function showDirSaveDialog() {
       `<div class="pub-dialog__change pub-dialog__change--${kind}"><span class="pub-dialog__change-kind">${kind}</span><span class="pub-dialog__change-path">${escapeHtml(path)}</span></div>`;
     const rows = [];
     for (const a of sum.adds) rows.push(row('add', a.path + (a.kind === 'dir' ? '/' : '')));
+    for (const mv of (sum.moves || [])) rows.push(row('mv', `${mv.src} → ${mv.dst}`));
     for (const m of sum.mods) rows.push(row('mod', m.path));
     for (const r of sum.removes) rows.push(row('del', r.path));
     return rows.join('');
@@ -2343,6 +2391,7 @@ function showDirSaveDialog() {
       const res = await saveLocalEditsToFS({ onStatus: (m) => setStatus(m) });
       const parts = [];
       if (res.written) parts.push(`${res.written} souborů`);
+      if (res.moved) parts.push(`${res.moved} přesunuto`);
       if (res.removed) parts.push(`${res.removed} smazáno`);
       if (res.dirsCreated) parts.push(`${res.dirsCreated} adresářů`);
       if (res.errors.length) {

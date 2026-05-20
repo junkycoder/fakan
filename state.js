@@ -347,7 +347,104 @@ export function applyTreeOps(tree) {
       const parent = findDirInTree(tree, parts.join('/'));
       if (!parent || !Array.isArray(parent.children)) continue;
       parent.children = parent.children.filter((c) => c.name !== name);
+    } else if (op.op === 'mv') {
+      applyMvToTree(tree, op.src || '', op.dst || '');
     }
   }
   return tree;
+}
+
+// In-place přesun uzlu ze srcPath do dstPath. Vrací { undo } pro revert,
+// nebo null pokud přesun není legální (cíl neexistuje, kolize jména, cyklus).
+// Používá se pro drag preview (revertujeme bez persistování) i pro applyTreeOps.
+function applyMvToTree(tree, srcPath, dstPath) {
+  if (!srcPath || !dstPath || srcPath === dstPath) return null;
+  if (dstPath === srcPath || dstPath.startsWith(srcPath + '/')) return null; // do sebe / descendanta
+  const srcParts = srcPath.split('/');
+  const srcName = srcParts.pop();
+  const srcParent = srcParts.length ? findDirInTree(tree, srcParts.join('/')) : tree;
+  if (!srcParent || !Array.isArray(srcParent.children)) return null;
+  const idx = srcParent.children.findIndex((c) => c.name === srcName);
+  if (idx < 0) return null;
+  const node = srcParent.children[idx];
+
+  const dstParts = dstPath.split('/');
+  const dstName = dstParts.pop();
+  const dstParent = dstParts.length ? findDirInTree(tree, dstParts.join('/')) : tree;
+  if (!dstParent) return null;
+  if (!Array.isArray(dstParent.children)) dstParent.children = [];
+  if (dstParent.children.some((c) => c.name === dstName)) return null; // kolize
+
+  // úspěch — splice a relabel
+  srcParent.children.splice(idx, 1);
+  const originalName = node.name;
+  const originalFilename = node.filename;
+  node.name = dstName;
+  if (node.type === 'file' && node.filename) node.filename = dstName;
+  dstParent.children.push(node);
+
+  return {
+    undo: () => {
+      const i = dstParent.children.indexOf(node);
+      if (i >= 0) dstParent.children.splice(i, 1);
+      node.name = originalName;
+      if (node.type === 'file') node.filename = originalFilename;
+      srcParent.children.splice(idx, 0, node);
+    },
+  };
+}
+
+// Public API pro drag preview: aplikuj mv na originalTree, vrať undo.
+// NEpersistuje do LS — to dělá až recordMove na drop.
+export function previewMove(srcPath, dstPath) {
+  if (!state.originalTree) return null;
+  return applyMvToTree(state.originalTree, srcPath, dstPath);
+}
+
+// Drop confirmation: persistuj mv do treeOps a přejmenuj LS edit overlay klíče
+// (rekurzivně pro nested files pod přesunutou složkou).
+export function recordMove(srcPath, dstPath) {
+  if (!srcPath || !dstPath || srcPath === dstPath) return;
+  // pokud je v treeOps stejná cesta zaháčkovaná v předchozím mv (src ↔ dst),
+  // zkompaktujeme — finální mv jen z původu na finální cíl.
+  const compactSrc = collapseMoveSource(srcPath);
+  pushTreeOp({ op: 'mv', src: compactSrc, dst: dstPath });
+  relocateEditOverrides(srcPath, dstPath);
+}
+
+// Pro každý LS edit override pod přejmenovaným prefixem updatuj klíč.
+function relocateEditOverrides(srcPath, dstPath) {
+  try {
+    const oldPrefix = LS_EDIT_PREFIX + srcPath;
+    const newPrefix = LS_EDIT_PREFIX + dstPath;
+    const toMove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (k === oldPrefix) toMove.push([k, newPrefix]);
+      else if (k.startsWith(oldPrefix + '/')) toMove.push([k, newPrefix + k.slice(oldPrefix.length)]);
+    }
+    for (const [oldK, newK] of toMove) {
+      const v = localStorage.getItem(oldK);
+      if (v != null) {
+        localStorage.setItem(newK, v);
+        localStorage.removeItem(oldK);
+      }
+    }
+  } catch {}
+}
+
+// Kompakt: pokud někdy v treeOps existuje mv X → srcPath, kanonický src je X.
+// Volá se před vložením nového mv, aby se neopakované přesuny zaháčkovaly.
+function collapseMoveSource(srcPath) {
+  for (let i = state.treeOps.length - 1; i >= 0; i--) {
+    const op = state.treeOps[i];
+    if (op.op === 'mv' && op.dst === srcPath) {
+      const origSrc = op.src;
+      state.treeOps.splice(i, 1);
+      saveTreeOps(state.treeOps);
+      return origSrc;
+    }
+  }
+  return srcPath;
 }

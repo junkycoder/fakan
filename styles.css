@@ -200,6 +200,37 @@ button {
 /* fokus / aktivní stav řešen barvou + tučným písmem na .n--focus uvnitř .map */
 .hit--active, .hit--focus { background: transparent; outline: none; }
 
+/* --- drag & drop přesouvání uzlů ----------------------------------------- */
+
+body.dnd-active { cursor: grabbing; }
+body.dnd-active .hit { cursor: grabbing; }
+/* během dragu zruš hover-pozadí na hitech (mate s drop-target highlightem) */
+body.dnd-active .hit:hover { background: transparent; }
+
+.n.is-dragging { opacity: 0.35; }
+
+.hit.is-drop-target {
+  background: color-mix(in oklab, var(--c-green) 32%, transparent);
+  outline: 2px dashed var(--c-green);
+  outline-offset: -2px;
+}
+.n.is-drop-target { color: var(--c-green); font-weight: 700; }
+
+.drag-ghost {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 2px 6px;
+  background: color-mix(in oklab, var(--c-yellow) 80%, transparent);
+  color: var(--fg);
+  border-radius: 3px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  opacity: 0.92;
+}
+
 /* --- spodní navigace ----------------------------------------------------- */
 
 .nav {

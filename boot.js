@@ -13,6 +13,7 @@ import {
 } from './sources.js';
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
 import { mountStats } from './stats.js';
+import { setupDragDrop, shouldSuppressClick } from './dragdrop.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -34,6 +35,8 @@ export async function boot() {
   // dblclick odešle nejdřív 1-2× click — single akci odložím, aby ji dblclick stihl zrušit
   let pendingSingle = null;
   const handleHit = (e, mode) => {
+    // pokud právě skončil drag, ignoruj synthetický click
+    if (shouldSuppressClick()) return;
     const el = e.target.closest('.hit');
     if (!el) return;
     // hit button nesmí zůstat aktivní v DOM, jinak by Space na nej spustil click znova
@@ -68,6 +71,7 @@ export async function boot() {
   hits.addEventListener('click', (e) => handleHit(e, 'main'));
   hits.addEventListener('dblclick', (e) => handleHit(e, 'new'));
 
+  setupDragDrop();
   setupDropZone();
   renderSourceMenu();
   mountBadge();
