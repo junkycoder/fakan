@@ -216,6 +216,12 @@ body.dnd-active .hit:hover { background: transparent; }
 }
 .n.is-drop-target { color: var(--c-green); font-weight: 700; }
 
+.term.is-drop-target-term {
+  outline: 2px dashed var(--c-green);
+  outline-offset: -3px;
+  background: color-mix(in oklab, var(--c-green) 8%, transparent);
+}
+
 .drag-ghost {
   position: fixed;
   z-index: 9999;

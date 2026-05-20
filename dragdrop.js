@@ -94,7 +94,8 @@ function startDrag(e) {
   dragging = {
     srcPath: armed.srcPath,
     ghost,
-    currentTarget: null, // path
+    currentTarget: null,   // path složky / rootu pro preview move
+    terminalTarget: null,  // .term element pro insert-path drop
     undo: null,
     srcEl: armed.srcEl,
   };
@@ -124,6 +125,16 @@ function updateTarget(x, y) {
   // schovat ghost při hit-testu, aby nezachycovat sám sebe
   dragging.ghost.style.pointerEvents = 'none';
   const under = document.elementFromPoint(x, y);
+
+  // Terminal drop má přednost před přesunem do složky — nad terminálovým panelem
+  // se uzly nepřesouvají, jen se cesta vloží do promptu.
+  const termEl = under ? under.closest('.term') : null;
+  if (termEl) {
+    setTerminalTarget(termEl);
+    return;
+  }
+  if (dragging.terminalTarget) clearTerminalTarget();
+
   const hit = under ? under.closest('.hit') : null;
   const directTarget = resolveDropTarget(hit, dragging.srcPath);
 
@@ -195,6 +206,55 @@ function computeDstPath(srcPath, dstParent) {
   return dstParent ? `${dstParent}/${name}` : name;
 }
 
+// Aktivuj terminálový drop target: zruš případný preview move, highlight term panel.
+function setTerminalTarget(termEl) {
+  if (!dragging) return;
+  if (dragging.terminalTarget === termEl) return;
+  // pokud byl aktivní preview move, vrátíme strom a rebuild
+  const hadPreview = !!dragging.undo;
+  if (dragging.undo) {
+    dragging.undo();
+    dragging.undo = null;
+  }
+  if (dragging.currentTarget != null) {
+    clearTargetHighlight();
+    dragging.currentTarget = null;
+  }
+  if (hadPreview) rebuildWithFlip();
+
+  if (dragging.terminalTarget) dragging.terminalTarget.classList.remove('is-drop-target-term');
+  dragging.terminalTarget = termEl;
+  termEl.classList.add('is-drop-target-term');
+}
+
+function clearTerminalTarget() {
+  if (!dragging || !dragging.terminalTarget) return;
+  dragging.terminalTarget.classList.remove('is-drop-target-term');
+  dragging.terminalTarget = null;
+}
+
+// Vloží cestu do terminálového inputu na pozici kurzoru (s padding mezerami)
+// a zaměří input. Cesty s whitespace/specialy obalí do single-quotes.
+function insertPathIntoTerminalInput(termEl, srcPath) {
+  const input = termEl.querySelector('[data-term-input]');
+  if (!input) return;
+  const quoted = /[\s"'\\$`]/.test(srcPath) ? `'${srcPath.replace(/'/g, `'\\''`)}'` : srcPath;
+  const cur = input.value;
+  let pos = input.selectionStart != null ? input.selectionStart : cur.length;
+  if (pos < 0 || pos > cur.length) pos = cur.length;
+  const before = cur.slice(0, pos);
+  const after = cur.slice(pos);
+  const padLeft = before.length && !/\s$/.test(before) ? ' ' : '';
+  const padRight = after.length && !/^\s/.test(after) ? ' ' : '';
+  const insert = padLeft + quoted + padRight;
+  input.value = before + insert + after;
+  const caret = (before + insert).length;
+  input.focus();
+  try { input.selectionStart = input.selectionEnd = caret; } catch {}
+  // odpal input event pro případné listenery (autocomplete apod.)
+  try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch {}
+}
+
 function highlightTarget(targetPath) {
   const sel = `#hits .hit[data-path="${cssEscape(targetPath || '/')}"]`;
   const hit = document.querySelector(sel);
@@ -212,9 +272,16 @@ function finishDrag(e) {
   if (!dragging) return;
   const srcPath = dragging.srcPath;
   const targetPath = dragging.currentTarget;
+  const termTarget = dragging.terminalTarget;
   // mid-drag highlight zachycen v updateTarget. Pokud je targetPath !== null,
   // preview už byl aplikován na originalTree — persistujeme.
   cleanupDrag();
+
+  if (termTarget) {
+    suppressNextClick = true;
+    insertPathIntoTerminalInput(termTarget, srcPath);
+    return;
+  }
 
   if (targetPath != null) {
     suppressNextClick = true;
@@ -241,6 +308,7 @@ function cancelDrag() {
 function cleanupDrag() {
   if (!dragging) return;
   clearTargetHighlight();
+  clearTerminalTarget();
   if (dragging.ghost && dragging.ghost.parentNode) dragging.ghost.parentNode.removeChild(dragging.ghost);
   document.body.classList.remove('dnd-active');
   document.querySelectorAll('.n.is-dragging').forEach((el) => el.classList.remove('is-dragging'));
