@@ -9,7 +9,7 @@ import {
   LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
-  applyTreeOps, clearGhBaseline,
+  applyTreeOps, clearGhBaseline, gitBlobSha,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain, maybeOpenDefaultIndex } from './panels.js';
@@ -1787,7 +1787,6 @@ function renderPublishButton() {
     wrap.setAttribute('hidden', '');
     return;
   }
-  wrap.removeAttribute('hidden');
 
   const btn = wrap.querySelector('[data-publish-btn]');
   const glyph = wrap.querySelector('[data-publish-glyph]');
@@ -1797,21 +1796,73 @@ function renderPublishButton() {
     glyph.textContent = '↑';
     label.textContent = 'Publish';
     btn.setAttribute('aria-label', `Publish do ${state.githubSpec.owner}/${state.githubSpec.repo}`);
+    // GitHub: tlačítko zobrazuj jen pokud jsou změny vůči baselinu
+    // (refreshPublishVisibility doplní viditelnost asynchronně).
+    if (state.ghHasChanges === false) wrap.setAttribute('hidden', '');
+    else wrap.removeAttribute('hidden');
   } else if (state.uploadedSnapshot) {
     glyph.textContent = '↓';
     label.textContent = 'Stáhnout';
     btn.setAttribute('aria-label', 'Stáhnout snapshot');
+    wrap.removeAttribute('hidden');
   } else {
     glyph.textContent = '↓';
     label.textContent = 'Stáhnout';
     btn.setAttribute('aria-label', 'Stáhnout složku jako ZIP');
+    wrap.removeAttribute('hidden');
   }
 
   if (!btn.dataset.bound) {
     btn.dataset.bound = '1';
     btn.addEventListener('click', () => showPublishDialog());
   }
+
+  // pro GitHub spusť async kontrolu změn (debounced)
+  if (state.githubSpec) scheduleChangesCheck();
 }
+
+// --- Publish: refresh viditelnosti podle diffu vůči GitHub baselinu ----------
+
+let _changesCheckTimer = null;
+let _changesCheckRunning = false;
+function scheduleChangesCheck() {
+  if (_changesCheckTimer) clearTimeout(_changesCheckTimer);
+  _changesCheckTimer = setTimeout(() => { _changesCheckTimer = null; runChangesCheck(); }, 250);
+}
+async function runChangesCheck() {
+  if (_changesCheckRunning) { scheduleChangesCheck(); return; }
+  if (!state.githubSpec || !state.ghBaselineKey || !state.originalTree) return;
+  _changesCheckRunning = true;
+  try {
+    const files = await collectGithubPushFiles(state.originalTree);
+    state.ghHasChanges = files.length > 0;
+    const wrap = document.querySelector('[data-nav-publish]');
+    if (wrap && state.githubSpec) {
+      if (state.ghHasChanges) wrap.removeAttribute('hidden');
+      else wrap.setAttribute('hidden', '');
+    }
+  } catch (e) {
+    // při chybě nech tlačítko viditelné — uživatel si může otevřít dialog a vidět chybu
+    state.ghHasChanges = true;
+    const wrap = document.querySelector('[data-nav-publish]');
+    if (wrap && state.githubSpec) wrap.removeAttribute('hidden');
+  } finally {
+    _changesCheckRunning = false;
+  }
+}
+
+// Veřejná funkce — volat po editu / vytvoření / smazání souboru, ať se viditelnost
+// Publish tlačítka průběžně aktualizuje.
+export function refreshPublishVisibility() {
+  if (!state.githubSpec) return;
+  scheduleChangesCheck();
+}
+
+// Posloucháme strom-mutující události z editoru / MC / shellu (mimo modul,
+// aby nevznikla cyklická závislost).
+window.addEventListener('fakan:tree-changed', () => {
+  refreshPublishVisibility();
+});
 
 // --- Mobile srcbar collapse ------------------------------------------------
 // Na úzkém viewportu se srcbar default zabalí do malého „zdroj" tlačítka.
@@ -2353,12 +2404,13 @@ function showHelpDialog() {
         </table>
 
         <h3>Panely a taby</h3>
+        <p class="help-dialog__note">Na Macu používejte <kbd>Ctrl</kbd>, ne <kbd>⌘</kbd> — <kbd>⌘</kbd>+<kbd>Shift</kbd>+W/[/]/1–9 kolidují se zkratkami prohlížeče.</p>
         <table class="help-dialog__keys">
-          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>zavřít aktivní panel</td></tr>
-          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>[</kbd> / <kbd>]</kbd></td><td>cyklit mezi taby</td></tr>
-          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>skok na n-tý panel</td></tr>
-          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>maximalizovat aktivní panel</td></tr>
-          <tr><td><kbd>${mod}</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td><td>otevřít aktuální focus jako follower preview</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>W</kbd></td><td>zavřít aktivní panel</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>[</kbd> / <kbd>]</kbd></td><td>cyklit mezi taby</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>9</kbd></td><td>skok na n-tý panel</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd></td><td>maximalizovat aktivní panel</td></tr>
+          <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>N</kbd></td><td>otevřít aktuální focus jako follower preview</td></tr>
         </table>
 
         <h3>Terminál</h3>

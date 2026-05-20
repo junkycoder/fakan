@@ -984,6 +984,7 @@ export function addTreeNode(parentPath, rawName) {
 
   parent.children.push(makeNewNode(name, isDir));
   pushTreeOp({ op: 'add', parent: parentPath || '', name, isDir });
+  try { window.dispatchEvent(new CustomEvent('fakan:tree-changed')); } catch {}
   return (parentPath ? `${parentPath}/${name}` : name);
 }
 
@@ -999,5 +1000,6 @@ export function removeTreeNode(path) {
   pushTreeOp({ op: 'rm', path });
   // edit overlay pro smazaný soubor už nemá smysl
   try { localStorage.removeItem(LS_EDIT_PREFIX + path); } catch {}
+  try { window.dispatchEvent(new CustomEvent('fakan:tree-changed')); } catch {}
   return true;
 }

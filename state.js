@@ -131,6 +131,7 @@ export const state = {
   ghBaselineSha: new Map(),           // path -> git blob SHA z /git/trees
   ghBaselinePaths: new Set(),         // všechny cesty, které loader namountoval
   ghBaselineTruncated: false,         // true pokud GitHub tree byl truncated
+  ghHasChanges: null,                 // null = ještě nezkontrolováno, bool = výsledek diffu
 
   // bash-style job control mezi vimem a terminálem: Ctrl+Z ve vimu pushne
   // editorový panel sem (skryje ho), `fg` v terminálu vrátí poslední
@@ -160,6 +161,7 @@ export function setGhBaseline({ key, sha, paths, truncated }) {
   state.ghBaselineSha = sha instanceof Map ? sha : new Map(Object.entries(sha || {}));
   state.ghBaselinePaths = paths instanceof Set ? paths : new Set(paths || []);
   state.ghBaselineTruncated = !!truncated;
+  state.ghHasChanges = null;
 }
 
 export function clearGhBaseline() {
@@ -167,6 +169,7 @@ export function clearGhBaseline() {
   state.ghBaselineSha = new Map();
   state.ghBaselinePaths = new Set();
   state.ghBaselineTruncated = false;
+  state.ghHasChanges = null;
 }
 
 // --- čisté util funkce ------------------------------------------------------
@@ -252,6 +255,7 @@ export function saveEditOverride(node, text) {
     if (text === original) localStorage.removeItem(editKey(node));
     else localStorage.setItem(editKey(node), text);
   } catch {}
+  try { window.dispatchEvent(new CustomEvent('fakan:tree-changed')); } catch {}
 }
 
 export function applyEditToNode(node, text) {

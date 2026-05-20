@@ -90,6 +90,16 @@ function renderMarkdown(md) {
   return paras.replace(/ B(\d+) /g, (_, i) => blocks[Number(i)]);
 }
 
+// Prázdný textový soubor (čerstvě vytvořený přes touch/MC nebo na disku s 0 bytů)
+// — raw je explicitně '' (ne undefined). V tom případě nemá smysl rendered preview
+// ukazovat „Načítám…" / prázdno; otevři rovnou src/editor.
+function isKnownEmptyFile(node) {
+  if (!node || node.type !== 'file') return false;
+  if (node.kind === 'web') return false;
+  if (mediaKind(node)) return false;
+  return typeof node.raw === 'string' && node.raw.length === 0;
+}
+
 // --- defaultní mode pro panel ------------------------------------------------
 // MD / HTML / dir-s-index.html se otevírají rovnou v rendered módu.
 // Ostatní spustitelné soubory (např. budoucí .sh / .js v .bin/) otevíráme jako
@@ -100,6 +110,8 @@ function defaultPanelMode(node) {
   if (node.type === 'mc') return 'source';
   if (node.kind === 'web') return 'rendered';
   if (node.type === 'dir' && dirIndexHtml(node)) return 'rendered';
+  // prázdný soubor → rovnou src (jinak by preview ukazovalo „Načítám…" nebo prázdno)
+  if (isKnownEmptyFile(node)) return 'source';
   // .md a .html otevíráme v rendered módu i bez načteného obsahu —
   // panel ho lazy fetchne přes node.path.
   if (node.kind === 'md') return 'rendered';
@@ -845,7 +857,20 @@ function setupPanelInteractions(panel) {
   // lazy fetch obsahu (statický deploy) — po doručení re-renderuje body
   if (nodeNeedsLazyContent(panel.node)) {
     ensureNodeContent(panel.node)
-      .then(() => { rerenderPanelBody(panel); })
+      .then(() => {
+        // pokud se ukáže, že soubor je prázdný (0 bytů), přepni rovnou na src —
+        // rendered by ukazoval „Načítám…" / prázdno
+        if (panel.mode === 'rendered' && isKnownEmptyFile(panel.node)) {
+          panel.mode = 'source';
+          const playBtn = panel.element.querySelector('[data-panel-play]');
+          if (playBtn) {
+            playBtn.classList.remove('is-active');
+            playBtn.textContent = 'play';
+            playBtn.title = 'Sestavit / náhled';
+          }
+        }
+        rerenderPanelBody(panel);
+      })
       .catch(() => {});
   }
 
