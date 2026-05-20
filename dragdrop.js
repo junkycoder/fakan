@@ -114,13 +114,30 @@ function updateGhostPosition(x, y) {
   dragging.ghost.style.top = `${y + 12}px`;
 }
 
+// Hysteresis: po aplikování preview se layout posune. Aby kurzor mohl být lehce
+// vedle (a layout se přitom nezačal kmitat preview ↔ revert), držíme target
+// dokud kurzor neopustí jeho expandovaný bbox nebo nenajedeme nad jiný validní.
+const HYSTERESIS_MARGIN = 24;
+
 function updateTarget(x, y) {
   if (!dragging) return;
   // schovat ghost při hit-testu, aby nezachycovat sám sebe
   dragging.ghost.style.pointerEvents = 'none';
   const under = document.elementFromPoint(x, y);
   const hit = under ? under.closest('.hit') : null;
-  const targetPath = resolveDropTarget(hit, dragging.srcPath);
+  const directTarget = resolveDropTarget(hit, dragging.srcPath);
+
+  let targetPath;
+  if (directTarget != null) {
+    // přímý hit nad validním cílem — vždy přepneme
+    targetPath = directTarget;
+  } else if (dragging.currentTarget != null && (!hit || isNearCurrentTarget(x, y))) {
+    // mimo cíl, ale buď nad mezerou (žádný hit) nebo v hysteresis okruhu —
+    // držíme stávající target, aby FLIP-přerovnání nezačalo kmitat preview ↔ revert
+    return;
+  } else {
+    targetPath = null;
+  }
 
   if (targetPath === dragging.currentTarget) return;
 
@@ -262,6 +279,20 @@ function rebuildWithFlip(focusPath) {
       el.style.transform = '';
     });
   }
+}
+
+function isNearCurrentTarget(x, y) {
+  if (!dragging || dragging.currentTarget == null) return false;
+  const sel = `#hits .hit[data-path="${cssEscape(dragging.currentTarget || '/')}"]`;
+  const el = document.querySelector(sel);
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  return (
+    x >= r.left - HYSTERESIS_MARGIN &&
+    x <= r.right + HYSTERESIS_MARGIN &&
+    y >= r.top - HYSTERESIS_MARGIN &&
+    y <= r.bottom + HYSTERESIS_MARGIN
+  );
 }
 
 function cssEscape(s) {
