@@ -6,7 +6,7 @@
 // `commit` a `push` jsou proto v podstatě jedna akce; `pull` = re-fetch tree;
 // `fetch` = jen kontrola remote stavu bez přemountování.
 
-import { state } from './state.js';
+import { state, LS_EDIT_PREFIX, splitExt, isTextFile } from './state.js';
 import {
   ghApi, ghListBranches, ghPush, collectGithubPushFiles, connectGithub,
   refreshPublishVisibility,
@@ -58,6 +58,223 @@ function getOpt(args, names) {
     }
   }
   return { value: null, rest: args };
+}
+
+// Najdi text souboru po cestě v originalTree (raw + override). Vrací
+// { node, originalText, currentText } nebo null pokud cesta nesedí.
+function findNodeByPath(tree, path) {
+  if (!tree || !path) return null;
+  const parts = path.split('/');
+  let cur = tree;
+  for (let i = 0; i < parts.length; i++) {
+    if (!cur || !Array.isArray(cur.children)) return null;
+    const seg = parts[i];
+    const isLast = i === parts.length - 1;
+    cur = cur.children.find((c) => isLast
+      ? (c.type === 'file' && (c.filename || c.name) === seg)
+      : (c.type === 'dir' && c.name === seg));
+    if (!cur) return null;
+  }
+  return cur;
+}
+
+function loadEditOverrideRaw(path) {
+  try { return localStorage.getItem(LS_EDIT_PREFIX + path); } catch { return null; }
+}
+
+// Klasický LCS-based unified diff. Pro rozumné soubory (do ~5k řádků).
+function diffLines(oldText, newText) {
+  const a = (oldText || '').split('\n');
+  const b = (newText || '').split('\n');
+  const m = a.length, n = b.length;
+  const LIMIT = 5000;
+  if (m > LIMIT || n > LIMIT) {
+    return [{ type: 'note', text: `(soubor je příliš velký pro line-diff — ${m} vs ${n} řádků)` }];
+  }
+  const dp = [];
+  for (let i = 0; i <= m; i++) dp.push(new Int32Array(n + 1));
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      if (a[i] === b[j]) dp[i][j] = dp[i + 1][j + 1] + 1;
+      else dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < m && j < n) {
+    if (a[i] === b[j]) { ops.push({ type: 'eq', text: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { ops.push({ type: 'del', text: a[i] }); i++; }
+    else { ops.push({ type: 'add', text: b[j] }); j++; }
+  }
+  while (i < m) ops.push({ type: 'del', text: a[i++] });
+  while (j < n) ops.push({ type: 'add', text: b[j++] });
+  return ops;
+}
+
+// Z LCS ops vyrobí unified diff hunks s 3 řádky kontextu kolem změn.
+function formatHunks(ops, contextLines = 3) {
+  if (ops.length === 1 && ops[0].type === 'note') return [ops[0].text];
+  const lines = [];
+  let aLine = 1, bLine = 1;
+  // Najdi indexy s diff op
+  const diffIdx = ops.map((o, idx) => (o.type !== 'eq' ? idx : -1)).filter((i) => i >= 0);
+  if (!diffIdx.length) return [];
+  // Slož sousedící hunky podle vzdálenosti < 2 * contextLines
+  const groups = [];
+  let cur = null;
+  for (const idx of diffIdx) {
+    if (!cur) { cur = { from: idx, to: idx }; continue; }
+    if (idx - cur.to <= 2 * contextLines) cur.to = idx;
+    else { groups.push(cur); cur = { from: idx, to: idx }; }
+  }
+  if (cur) groups.push(cur);
+
+  // Spočti aLine/bLine před začátkem skupiny
+  function lineCounts(upToIdx) {
+    let aL = 1, bL = 1;
+    for (let k = 0; k < upToIdx; k++) {
+      if (ops[k].type === 'eq') { aL++; bL++; }
+      else if (ops[k].type === 'del') aL++;
+      else if (ops[k].type === 'add') bL++;
+    }
+    return [aL, bL];
+  }
+
+  for (const g of groups) {
+    const start = Math.max(0, g.from - contextLines);
+    const end = Math.min(ops.length - 1, g.to + contextLines);
+    let [aStart, bStart] = lineCounts(start);
+    let aCount = 0, bCount = 0;
+    for (let k = start; k <= end; k++) {
+      if (ops[k].type === 'eq') { aCount++; bCount++; }
+      else if (ops[k].type === 'del') aCount++;
+      else if (ops[k].type === 'add') bCount++;
+    }
+    lines.push(`@@ -${aStart},${aCount} +${bStart},${bCount} @@`);
+    for (let k = start; k <= end; k++) {
+      const o = ops[k];
+      lines.push((o.type === 'eq' ? ' ' : o.type === 'del' ? '-' : '+') + o.text);
+    }
+  }
+  return lines;
+}
+
+function diffStat(ops) {
+  let add = 0, del = 0;
+  for (const o of ops) {
+    if (o.type === 'add') add++;
+    else if (o.type === 'del') del++;
+  }
+  return { add, del };
+}
+
+async function gitDiff(args, session, io) {
+  const spec = requireSpec(io);
+  if (!spec) return 1;
+  if (!state.originalTree) { io.stderr('git diff: strom nenačten'); return 1; }
+
+  const statOnly = args.includes('--stat');
+  const positional = args.filter((a) => !a.startsWith('-'));
+  const targetPath = positional[0] || null;
+
+  let files;
+  try { files = await collectGithubPushFiles(state.originalTree); }
+  catch (e) { io.stderr('git diff: ' + (e.message || e)); return 1; }
+
+  const filtered = targetPath ? files.filter((f) => f.path === targetPath) : files;
+  if (targetPath && !filtered.length) {
+    // existuje vůbec? rozliš „beze změny" vs „neexistuje"
+    const node = findNodeByPath(state.originalTree, targetPath);
+    if (!node && !state.ghBaselinePaths.has(targetPath)) {
+      io.stderr(`git diff: ${targetPath}: cesta neexistuje`);
+      return 1;
+    }
+    return 0; // bez změn
+  }
+  if (!filtered.length) return 0;
+
+  const dec = new TextDecoder();
+
+  // Pro --stat shrnutí
+  if (statOnly) {
+    let totalAdd = 0, totalDel = 0;
+    const rows = [];
+    for (const f of filtered) {
+      let oldText = '', newText = '';
+      if (f.kind === 'del') {
+        try { oldText = await fetchBaselineText(spec, f.path); }
+        catch { rows.push({ path: f.path, label: 'D  (binary / nelze stáhnout)' }); continue; }
+        newText = '';
+      } else if (f.kind === 'add') {
+        oldText = '';
+        newText = dec.decode(f.data);
+      } else {
+        const node = findNodeByPath(state.originalTree, f.path);
+        oldText = node && node._originalRaw != null ? node._originalRaw : (node && node.raw != null ? node.raw : '');
+        newText = dec.decode(f.data);
+      }
+      const ops = diffLines(oldText, newText);
+      const { add, del } = diffStat(ops);
+      totalAdd += add; totalDel += del;
+      rows.push({ path: f.path, kind: f.kind, add, del });
+    }
+    const maxPath = Math.max(...rows.map((r) => r.path.length));
+    for (const r of rows) {
+      if (r.label) { io.stdout(` ${r.path.padEnd(maxPath)} | ${r.label}`); continue; }
+      const sign = r.kind === 'add' ? 'A' : r.kind === 'del' ? 'D' : 'M';
+      io.stdout(` ${r.path.padEnd(maxPath)} | ${sign}  +${r.add} -${r.del}`);
+    }
+    io.stdout(` ${filtered.length} ${filtered.length === 1 ? 'soubor změněn' : 'souborů změněno'}, +${totalAdd}/-${totalDel}`);
+    return 0;
+  }
+
+  for (let idx = 0; idx < filtered.length; idx++) {
+    const f = filtered[idx];
+    if (idx > 0) io.stdout('');
+    io.stdout(`diff --git a/${f.path} b/${f.path}`);
+    if (f.kind === 'add') {
+      io.stdout('new file mode 100644');
+      io.stdout(`--- /dev/null`);
+      io.stdout(`+++ b/${f.path}`);
+      const newText = dec.decode(f.data);
+      const ops = diffLines('', newText);
+      for (const ln of formatHunks(ops)) io.stdout(ln);
+    } else if (f.kind === 'del') {
+      io.stdout('deleted file mode 100644');
+      io.stdout(`--- a/${f.path}`);
+      io.stdout(`+++ /dev/null`);
+      let oldText;
+      try { oldText = await fetchBaselineText(spec, f.path); }
+      catch (e) { io.stdout(`(nelze stáhnout baseline: ${e.message || e})`); continue; }
+      const ops = diffLines(oldText, '');
+      for (const ln of formatHunks(ops)) io.stdout(ln);
+    } else {
+      io.stdout(`--- a/${f.path}`);
+      io.stdout(`+++ b/${f.path}`);
+      const node = findNodeByPath(state.originalTree, f.path);
+      const oldText = node && node._originalRaw != null ? node._originalRaw
+        : (node && node.raw != null ? node.raw : '');
+      const overrideText = loadEditOverrideRaw(f.path);
+      const newText = overrideText != null ? overrideText : (node?.raw ?? '');
+      const ops = diffLines(oldText, newText);
+      for (const ln of formatHunks(ops)) io.stdout(ln);
+    }
+  }
+  return 0;
+}
+
+async function fetchBaselineText(spec, path) {
+  const segs = path.split('/').map(encodeURIComponent).join('/');
+  if (spec.token) {
+    const r = await fetch(`https://api.github.com/repos/${spec.owner}/${spec.repo}/contents/${segs}?ref=${encodeURIComponent(spec.branch || 'main')}`, {
+      headers: { Accept: 'application/vnd.github.raw', Authorization: `Bearer ${spec.token}` },
+    });
+    if (!r.ok) throw new Error(`baseline ${r.status}`);
+    return r.text();
+  }
+  const r = await fetch(`https://raw.githubusercontent.com/${spec.owner}/${spec.repo}/${encodeURIComponent(spec.branch || 'main')}/${segs}`);
+  if (!r.ok) throw new Error(`raw ${r.status}`);
+  return r.text();
 }
 
 async function gitStatus(args, session, io) {
@@ -306,6 +523,7 @@ async function gitCheckout(args, session, io) {
 function gitHelp(io) {
   io.stdout('Příkazy git (proti remote přes GitHub API — žádný lokální repo):');
   io.stdout('  git status                 změny vůči remote');
+  io.stdout('  git diff [path] [--stat]   unified diff (nebo souhrn +/- per soubor)');
   io.stdout('  git log [-n N]             posledních N commitů (default 10)');
   io.stdout('  git commit -m "zpráva"     publikuje všechny změny na remote');
   io.stdout('  git push                   alias: ukáže, co commit by udělal');
@@ -326,6 +544,7 @@ export async function gitCmd(args, session, io) {
   const rest = args.slice(1);
   switch (sub) {
     case 'status':   return gitStatus(rest, session, io);
+    case 'diff':     return gitDiff(rest, session, io);
     case 'log':      return gitLog(rest, session, io);
     case 'commit':   return gitCommit(rest, session, io);
     case 'push':     return gitPush(rest, session, io);
