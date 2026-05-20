@@ -311,8 +311,8 @@ function sourceBody(node) {
     return '<p class="panel__note">Mindmapa fakan.cz. Klikněte uzel pro otevření.</p>';
   }
   if (node.type === 'dir') {
-    if (!node.hasChildren) return '<p class="panel__note empty">Zatím prázdné.</p>';
-    return renderDirTree(node);
+    // dir v src módu = mc nad tou složkou. Play (rendered) zůstává index.html iframe.
+    return `<div class="mc-mount" data-mc-mount data-mc-cwd="${escapeHtml(node.path || '')}"></div>`;
   }
   if (node.kind === 'web') {
     const url = node.url || '';
@@ -797,8 +797,11 @@ function mountMcIfNeeded(panel, bodyEl) {
   const host = bodyEl.querySelector('[data-mc-mount]');
   if (!host) return;
   const node = panel.node;
+  // pro samostatný mc panel: cwd z node.cwd;
+  // pro dir panel v src módu: cwd z data-mc-cwd atributu (= node.path)
+  const cwd = host.dataset.mcCwd != null ? host.dataset.mcCwd : (node.cwd || '');
   const handle = mountMc(host, {
-    cwd: node.cwd || '',
+    cwd,
     onClose: () => closePanel(panel),
     openMain: (n) => openMain(n),
     openPreview: (n) => openPreview(n),
@@ -941,10 +944,14 @@ function setupPanelInteractions(panel) {
     playBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       destroyEditor(panel);
+      destroyTerminal(panel);
+      destroyMc(panel);
       revokePanelUrls(panel);
       panel.mode = panel.mode === 'source' ? 'rendered' : 'source';
       bodyEl.innerHTML = panel.mode === 'source' ? sourceBody(panel.node) : renderedBody(panel.node);
       mountEditorIfNeeded(panel, bodyEl);
+      mountTerminalIfNeeded(panel, bodyEl);
+      mountMcIfNeeded(panel, bodyEl);
       mountMediaIfNeeded(panel, bodyEl);
       playBtn.classList.toggle('is-active', panel.mode === 'rendered');
       playBtn.textContent = panel.mode === 'source' ? 'play' : 'src';
