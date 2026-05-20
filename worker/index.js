@@ -74,16 +74,19 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/')) {
       try {
-        return await handleApi(request, env, url);
+        return await handleApi(request, env, ctx, url);
       } catch (e) {
         return new Response(`api error: ${e && e.message ? e.message : e}`, { status: 500 });
       }
     }
+    // Anonymní agregát — jen HTML navigace (Sec-Fetch-Dest:document), žádná
+    // assets ani API. Žádné cookies, žádné identifikátory.
+    if (isPageView(request, url)) trackVisit(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
 };
 
-async function handleApi(request, env, url) {
+async function handleApi(request, env, ctx, url) {
   const origin = request.headers.get('Origin');
   // Origin check: same-origin (Origin host = request host) vždy OK; jinak musí
   // být v allowlistu. Bez Origin (curl, server-to-server) propustíme — auth
@@ -110,6 +113,9 @@ async function handleApi(request, env, url) {
   }
   if (url.pathname === '/api/quota') {
     return handleQuota(request, env, url);
+  }
+  if (url.pathname === '/api/stats') {
+    return handleStats(request, env, ctx);
   }
   if (url.pathname === '/api/run') {
     return handleRun(request, env, url);

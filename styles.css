@@ -2360,3 +2360,193 @@ button {
   .mc__fkey-label { display: none; }
 }
 
+/* --- nav: anonymní počítadlo návštěv ------------------------------------ */
+
+.nav__stats { position: relative; outline: none; }
+.nav__stats[hidden] { display: none; }
+.nav__stats-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.nav__stats-btn:hover,
+.nav__stats:focus-within .nav__stats-btn { color: var(--c-blue); }
+.nav__stats-glyph {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--c-blue);
+  opacity: 0.7;
+}
+.nav__stats-count { font-variant-numeric: tabular-nums; }
+
+/* --- stats dialog ------------------------------------------------------- */
+
+.stats-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stats-dialog[hidden] { display: none; }
+.stats-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in oklab, var(--bg) 70%, transparent);
+  backdrop-filter: blur(4px);
+  cursor: pointer;
+}
+.stats-dialog__panel {
+  position: relative;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.25);
+  min-width: 320px;
+  max-width: min(560px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: var(--mono);
+}
+.stats-dialog__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.stats-dialog__title {
+  font-size: 13px;
+  color: var(--fg);
+  font-weight: 600;
+}
+.stats-dialog__close {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--muted);
+  padding: 2px 8px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.stats-dialog__close:hover { color: var(--c-red); background: color-mix(in oklab, var(--c-red) 15%, transparent); }
+.stats-dialog__body {
+  padding: 16px;
+  overflow-y: auto;
+  font-size: 12px;
+  color: var(--fg);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.stats-dialog__loading,
+.stats-dialog__error,
+.stats-dialog__empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 16px 0;
+}
+.stats-dialog__error { color: var(--c-red); }
+.stats-dialog__total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.stats-dialog__total-num {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--c-blue);
+  font-variant-numeric: tabular-nums;
+}
+.stats-dialog__total-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.stats-dialog__section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.stats-dialog__countries {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.stats-dialog__country {
+  display: grid;
+  grid-template-columns: 32px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.stats-dialog__country-code {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.stats-dialog__country-bar {
+  height: 6px;
+  background: color-mix(in oklab, var(--c-blue) 25%, transparent);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.stats-dialog__country-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: var(--w, 0%);
+  background: var(--c-blue);
+  border-radius: 3px;
+}
+.stats-dialog__country-count {
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  min-width: 40px;
+  text-align: right;
+}
+.stats-dialog__regions {
+  grid-column: 2 / 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 2px 0 4px 0;
+}
+.stats-dialog__region {
+  white-space: nowrap;
+}
+.stats-dialog__spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+}
+.stats-dialog__spark-bar {
+  flex: 1;
+  min-width: 3px;
+  background: color-mix(in oklab, var(--c-blue) 60%, var(--bg));
+  border-radius: 2px 2px 0 0;
+  transition: background 120ms;
+}
+.stats-dialog__spark-bar:hover { background: var(--c-blue); }
+.stats-dialog__foot {
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: center;
+}
+

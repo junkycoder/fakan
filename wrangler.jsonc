@@ -35,12 +35,27 @@
 			"preview_id": "0442f7239e1b4759b005b8241acc39e6"
 		}
 	],
+	// Analytics Engine — anonymní agregát návštěvnosti (země, region, colo).
+	// Zápis přes env.ANALYTICS.writeDataPoint je zdarma do 10M datapointů/měsíc.
+	// Čtení (worker/analytics.js → handleStats) volá Cloudflare GraphQL API a
+	// vyžaduje secret `ANALYTICS_TOKEN` (token s permission "Account Analytics:Read")
+	// + `ANALYTICS_ACCOUNT_ID` (ten samý jako pro deploy).
+	// Vytvoření tokenu: dash.cloudflare.com → My Profile → API Tokens → Create.
+	// Uložení secretu:  wrangler secret put ANALYTICS_TOKEN
+	"analytics_engine_datasets": [
+		{
+			"binding": "ANALYTICS",
+			"dataset": "fakan_visits"
+		}
+	],
 	// Limity (volitelné env vary — defaulty jsou rozumné, viz worker/quota.js):
 	"vars": {
 		"MAX_RUNS_PER_DAY": "100",
 		"MAX_COMPUTE_MS_PER_DAY": "3600000",
 		"MAX_RUN_WALL_MS": "300000",
-		"RUNNER_IMPL": "container"
+		"RUNNER_IMPL": "container",
+		"ANALYTICS_ACCOUNT_ID": "1fb320ef69377e04c649dcc880044f71",
+		"ANALYTICS_DATASET": "fakan_visits"
 	},
 	// Cloudflare Containers (iterace 9) — skutečný bash místo mocku.
 	// Vyžaduje Containers feature v účtu (open beta) a wrangler ≥ 4.x.

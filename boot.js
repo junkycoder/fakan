@@ -12,6 +12,7 @@ import {
   tryRestoreSource, tryRestoreGithub, tryRestoreSnapshot, tryLoadDefaultSource,
 } from './sources.js';
 import { parseUrl, findNodeByPath, replaceUrl } from './url.js';
+import { mountStats } from './stats.js';
 
 export async function boot() {
   const canvas = document.getElementById('canvas');
@@ -96,6 +97,10 @@ export async function boot() {
   initFromUrl();
   maybeOpenDefaultIndex();
   window.addEventListener('popstate', initFromUrl);
+
+  // Stats v navu se připojí asynchronně — pokud endpoint chybí (lokální dev,
+  // chybějící ANALYTICS_TOKEN), prvek zůstane skrytý.
+  mountStats().catch(() => {});
 }
 
 // Aplikuje URL na state. Volá se při bootu i z popstate.

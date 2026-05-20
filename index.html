@@ -67,8 +67,31 @@
       <div class="nav__dropdown" id="nav-dropdown" aria-label="Historie navštívených složek"></div>
     </div>
     <span class="nav__sep" aria-hidden="true"></span>
+    <div class="nav__stats" data-nav-stats hidden>
+      <button class="nav__stats-btn" type="button" data-stats-btn aria-label="Anonymní návštěvnost — klikněte pro detail" title="Návštěvnost za 30 dní">
+        <span class="nav__stats-glyph" aria-hidden="true">·</span>
+        <span class="nav__stats-count" data-stats-count>—</span>
+      </button>
+    </div>
+    <span class="nav__sep" aria-hidden="true"></span>
     <div class="nav__tabs" id="nav-tabs"></div>
   </nav>
+
+  <div class="stats-dialog" data-stats-dialog hidden aria-hidden="true">
+    <div class="stats-dialog__backdrop" data-stats-close></div>
+    <div class="stats-dialog__panel" role="dialog" aria-labelledby="stats-dialog-title" aria-modal="true">
+      <div class="stats-dialog__head">
+        <div class="stats-dialog__title" id="stats-dialog-title">Návštěvnost</div>
+        <button class="stats-dialog__close" type="button" data-stats-close aria-label="Zavřít">✕</button>
+      </div>
+      <div class="stats-dialog__body" data-stats-body>
+        <div class="stats-dialog__loading">Načítám…</div>
+      </div>
+      <div class="stats-dialog__foot">
+        Anonymní agregát — žádné cookies ani identifikace. Země + region dodává CDN.
+      </div>
+    </div>
+  </div>
 
   <div class="panels" id="panels" aria-live="polite"></div>
 
