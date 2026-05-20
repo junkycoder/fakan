@@ -2444,19 +2444,29 @@ export function renderSourceMenu() {
   menu.innerHTML = '';
 
   const hasSource = !!(state.rootHandle || state.githubSpec || state.uploadedSnapshot);
+  const canFsAccess = typeof window.showDirectoryPicker === 'function';
   const items = [];
   items.push({
-    label: hasSource ? 'Otevřít jinou složku…' : 'Otevřít složku…',
-    onClick: openDirectoryPicker,
+    label: 'Nahrát složku (lokálně)',
+    onClick: openUploadPicker,
+    title: 'Nahraje složku do paměti prohlížeče. Edity se ukládají jen lokálně, pro persistenci stáhněte ZIP.',
   });
   items.push({
-    label: state.githubSpec ? 'Připojit jiný GitHub repo…' : 'Připojit GitHub repo…',
+    label: 'Připojit složku (na disku)',
+    onClick: canFsAccess ? openDirectoryPicker : null,
+    disabled: !canFsAccess,
+    title: canFsAccess
+      ? 'Připojí reálnou složku přes File System Access API. Edity se zapisují přímo na disk.'
+      : 'Tento prohlížeč nepodporuje File System Access API (zkuste Chrome / Edge / Brave).',
+  });
+  items.push({
+    label: 'Připojit GitHub',
     onClick: showGithubDialog,
   });
   if (!state.githubSpec && hasSource) {
     items.push({ label: 'Stáhnout jako ZIP', onClick: exportAsZip });
   } else if (!hasSource) {
-    items.push({ label: 'Export…', disabled: true, title: 'Nejprve připojte zdroj' });
+    items.push({ label: 'Stáhnout jako ZIP', disabled: true, title: 'Nejprve připojte zdroj' });
   }
   if (hasSource) {
     items.push({ label: 'Odpojit zdroj', onClick: disconnectSource, danger: true });
