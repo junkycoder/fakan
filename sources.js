@@ -906,7 +906,16 @@ async function openDirectoryPicker() {
     try {
       handle = await window.showDirectoryPicker({ mode: 'readwrite' });
     } catch (e) {
-      if (e.name !== 'AbortError') console.error(e);
+      if (e.name === 'AbortError') return; // user zavřel picker
+      console.error('showDirectoryPicker failed', e);
+      // SecurityError / NotAllowedError: prohlížeč tiše blokuje API (např. Arc),
+      // nebo iframe / nesecure context. Dej userovi konkrétní feedback místo
+      // mlčení.
+      const blocked = e.name === 'SecurityError' || e.name === 'NotAllowedError';
+      const msg = blocked
+        ? `Prohlížeč zablokoval přístup k souborům (${e.name}). Některé Chromium prohlížeče (např. Arc) File System Access API standardně nepovolují. Zkuste Chrome / Edge / Brave, nebo použijte „Nahrát složku (v prohlížeči)".`
+        : `Připojení složky selhalo: ${e.message || e.name}`;
+      alert(msg);
       return;
     }
     await loadAndMount(handle);
