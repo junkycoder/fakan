@@ -9,7 +9,7 @@ import {
   LS_EDIT_PREFIX,
   TIP_ACCOUNT, TIP_BANK, TIP_IBAN,
   splitExt, isTextFile, parseFrontmatter, escapeHtml, mediaKind,
-  applyTreeOps, clearGhBaseline, gitBlobSha,
+  applyTreeOps, clearGhBaseline, gitBlobSha, saveTreeOps,
 } from './state.js';
 import { rebuildMindmap } from './mindmap.js';
 import { closePanel, openMain, maybeOpenDefaultIndex } from './panels.js';
@@ -445,6 +445,15 @@ async function idbClearGithubSpec() {
 
 // --- historie zdrojů --------------------------------------------------------
 
+// Mapování starých type hodnot na nové (backward compat pro IDB záznamy
+// uložené před rename: handle→dir, snapshot→zip, github→git).
+const LEGACY_TYPE = { handle: 'dir', snapshot: 'zip', github: 'git' };
+function normalizeRecentEntry(e) {
+  if (!e || typeof e !== 'object') return e;
+  if (LEGACY_TYPE[e.type]) return { ...e, type: LEGACY_TYPE[e.type] };
+  return e;
+}
+
 async function idbGetRecent() {
   try {
     const db = await idbOpen();
@@ -455,7 +464,7 @@ async function idbGetRecent() {
       req.onerror = () => rej(req.error);
     });
     db.close();
-    return Array.isArray(list) ? list : [];
+    return Array.isArray(list) ? list.map(normalizeRecentEntry) : [];
   } catch { return []; }
 }
 
@@ -473,9 +482,9 @@ async function idbSetRecent(list) {
 }
 
 function recentKey(entry) {
-  if (entry.type === 'handle') return `handle:${entry.label}`;
-  if (entry.type === 'github') return `github:${entry.data?.owner}/${entry.data?.repo}@${entry.data?.branch || ''}`;
-  if (entry.type === 'snapshot') return `snapshot:${entry.label}`;
+  if (entry.type === 'dir') return `dir:${entry.label}`;
+  if (entry.type === 'git') return `git:${entry.data?.owner}/${entry.data?.repo}@${entry.data?.branch || ''}`;
+  if (entry.type === 'zip') return `zip:${entry.label}`;
   return entry.label;
 }
 
@@ -483,7 +492,7 @@ async function pushRecentSource(type, label, data) {
   const list = await idbGetRecent();
   const entry = {
     type, label, ts: Date.now(),
-    data: type === 'snapshot' ? null : data, // snapshot trees jsou velké → nepersitujeme data
+    data: type === 'zip' ? null : data, // zip (nahraný snapshot) trees jsou velké → nepersistujeme data
   };
   const key = recentKey(entry);
   const filtered = list.filter((it) => recentKey(it) !== key);
@@ -493,19 +502,19 @@ async function pushRecentSource(type, label, data) {
 }
 
 function currentSourceKey() {
-  if (state.rootHandle) return `handle:${state.rootHandle.name}`;
-  if (state.githubSpec) return `github:${state.githubSpec.owner}/${state.githubSpec.repo}@${state.githubSpec.branch || ''}`;
-  if (state.uploadedSnapshot) return `snapshot:${state.uploadedSnapshot.name}`;
+  if (state.rootHandle) return `dir:${state.rootHandle.name}`;
+  if (state.githubSpec) return `git:${state.githubSpec.owner}/${state.githubSpec.repo}@${state.githubSpec.branch || ''}`;
+  if (state.uploadedSnapshot) return `zip:${state.uploadedSnapshot.name}`;
   return null;
 }
 
 async function reconnectRecent(entry) {
   try {
-    if (entry.type === 'github' && entry.data) {
+    if (entry.type === 'git' && entry.data) {
       await connectGithub({ ...entry.data });
       return;
     }
-    if (entry.type === 'handle' && entry.data) {
+    if (entry.type === 'dir' && entry.data) {
       const handle = entry.data;
       // verify / re-prompt permission (user gesture: klik v dropdownu)
       let perm = 'denied';
@@ -520,8 +529,8 @@ async function reconnectRecent(entry) {
       await loadAndMount(handle);
       return;
     }
-    if (entry.type === 'snapshot') {
-      alert(`Snapshot „${entry.label}" je potřeba nahrát znovu (přetáhněte složku do okna).`);
+    if (entry.type === 'zip') {
+      alert(`„${entry.label}" je potřeba nahrát znovu (přetáhněte složku nebo zip do okna).`);
       return;
     }
   } catch (e) {
@@ -963,7 +972,7 @@ async function loadAndMount(handle, opts = {}) {
     if (opts.persist !== false) await idbSetHandle(handle);
     await idbClearGithubSpec();
     await idbClearSnapshot();
-    await pushRecentSource('handle', handle.name || '~', handle);
+    await pushRecentSource('dir', handle.name || '~', handle);
   } catch (err) {
     console.error(err);
     alert(`Načtení složky selhalo: ${err.message}`);
@@ -994,7 +1003,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
     if (opts.persist !== false) await idbSetSnapshot(tree);
     await idbClearHandle();
     await idbClearGithubSpec();
-    await pushRecentSource('snapshot', tree.name || 'snapshot', null);
+    await pushRecentSource('zip', tree.name || 'zip', null);
   } catch (err) {
     console.error(err);
     alert(`Nahrání složky selhalo: ${err.message}`);
@@ -1028,7 +1037,7 @@ async function connectGithub(spec, onStatus) {
       await idbSetGithubSpec(spec);
       await idbClearHandle();
       await idbClearSnapshot();
-      await pushRecentSource('github', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
+      await pushRecentSource('git', `${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}`, spec);
     } finally {
       hideSourceLoader();
     }
@@ -1435,7 +1444,7 @@ function showGithubDialog() {
 
   // bootstrap: nedávné GH repa z historie
   idbGetRecent().then((list) => {
-    const ghs = list.filter((e) => e.type === 'github' && e.data?.owner && e.data?.repo);
+    const ghs = list.filter((e) => e.type === 'git' && e.data?.owner && e.data?.repo);
     recentEntries = ghs.map((e) => ({
       owner: e.data.owner,
       repo: e.data.repo,
@@ -1542,6 +1551,171 @@ function buildZipBlob(entries) {
 function loadEditOverrideByPath(path) {
   if (!path) return null;
   try { return localStorage.getItem(LS_EDIT_PREFIX + path); } catch { return null; }
+}
+
+function collectEditOverlayKeys() {
+  const out = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(LS_EDIT_PREFIX)) out.push(k);
+    }
+  } catch {}
+  return out;
+}
+
+// --- FS write-back ---------------------------------------------------------
+// Uloží lokální edity (LS overlay + state.treeOps) zpět na disk přes File
+// System Access API. Funguje jen když je připojený state.rootHandle (typ 'dir').
+
+export function hasLocalDirChanges() {
+  if (!state.rootHandle) return false;
+  if (state.treeOps && state.treeOps.length) return true;
+  return collectEditOverlayKeys().length > 0;
+}
+
+async function resolveDirHandle(root, segments, { create = false } = {}) {
+  let cur = root;
+  for (const seg of segments) {
+    if (!seg) continue;
+    cur = await cur.getDirectoryHandle(seg, { create });
+  }
+  return cur;
+}
+
+async function resolveFileHandle(root, path, { create = false } = {}) {
+  const parts = path.split('/').filter(Boolean);
+  if (!parts.length) throw new Error('prázdná cesta');
+  const name = parts.pop();
+  const dir = await resolveDirHandle(root, parts, { create });
+  return dir.getFileHandle(name, { create });
+}
+
+async function writeToFileHandle(fileHandle, text) {
+  const w = await fileHandle.createWritable();
+  try { await w.write(text); }
+  finally { await w.close(); }
+}
+
+// Sesbírá přehled změn (pro dialog před uložením). Bez side-effects.
+export function collectDirChangesSummary() {
+  const adds = [];     // { path, kind: 'file'|'dir' } - nově vytvořené přes treeOps
+  const removes = [];  // { path } - smazané přes treeOps
+  const mods = [];     // { path } - LS edit overlay
+  for (const op of state.treeOps || []) {
+    if (op.op === 'rm') removes.push({ path: op.path });
+    else if (op.op === 'add') {
+      const full = ((op.parent || '').split('/').filter(Boolean)).concat([op.name]).join('/');
+      adds.push({ path: full, kind: op.isDir ? 'dir' : 'file' });
+    }
+  }
+  const addPaths = new Set(adds.filter((a) => a.kind === 'file').map((a) => a.path));
+  for (const key of collectEditOverlayKeys()) {
+    const path = key.slice(LS_EDIT_PREFIX.length);
+    if (!path || addPaths.has(path)) continue; // nová stuff jde do adds
+    mods.push({ path });
+  }
+  return { adds, removes, mods };
+}
+
+// Vrací { written, removed, dirsCreated, errors[] }
+export async function saveLocalEditsToFS({ onStatus } = {}) {
+  const root = state.rootHandle;
+  if (!root) throw new Error('Není připojená lokální složka.');
+  const status = (m) => { if (onStatus) onStatus(m); };
+
+  let written = 0;
+  let removed = 0;
+  let dirsCreated = 0;
+  const errors = [];
+
+  // 1) treeOps: 'rm' (mažeme nejdřív kvůli možnému re-create se stejným jménem)
+  const ops = (state.treeOps || []).slice();
+  for (const op of ops.filter((o) => o.op === 'rm')) {
+    try {
+      const parts = (op.path || '').split('/').filter(Boolean);
+      const name = parts.pop();
+      if (!name) continue;
+      status(`mažu ${op.path}`);
+      const parent = await resolveDirHandle(root, parts, { create: false });
+      await parent.removeEntry(name, { recursive: true });
+      removed++;
+    } catch (e) {
+      if (e.name === 'NotFoundError') { removed++; continue; }
+      errors.push({ path: op.path, op: 'rm', err: e.message });
+    }
+  }
+
+  // 2) treeOps: 'add' isDir=true (prázdné adresáře)
+  for (const op of ops.filter((o) => o.op === 'add' && o.isDir)) {
+    const full = ((op.parent || '').split('/').filter(Boolean)).concat([op.name]);
+    try {
+      status(`vytvářím adresář ${full.join('/')}`);
+      await resolveDirHandle(root, full, { create: true });
+      dirsCreated++;
+    } catch (e) {
+      errors.push({ path: full.join('/'), op: 'mkdir', err: e.message });
+    }
+  }
+
+  // 3) LS edit overlay → write na disk
+  const keys = collectEditOverlayKeys();
+  for (const key of keys) {
+    const path = key.slice(LS_EDIT_PREFIX.length);
+    if (!path) continue;
+    let text;
+    try { text = localStorage.getItem(key); } catch { continue; }
+    if (text == null) continue;
+    status(`zapisuji ${path}`);
+
+    const node = state.byPath.get(path);
+    let handle = node && node._handle && typeof node._handle.createWritable === 'function' ? node._handle : null;
+    if (!handle) {
+      try {
+        handle = await resolveFileHandle(root, path, { create: true });
+      } catch (e) {
+        errors.push({ path, op: 'write', err: e.message });
+        continue;
+      }
+    }
+    try {
+      await writeToFileHandle(handle, text);
+      if (node) {
+        node._handle = handle;
+        node._originalRaw = text;
+      }
+      try { localStorage.removeItem(key); } catch {}
+      written++;
+    } catch (e) {
+      errors.push({ path, op: 'write', err: e.message });
+    }
+  }
+
+  // 4) treeOps: 'add' isDir=false bez overlay (prázdný soubor) — vzácné
+  const overlayKeySet = new Set(keys);
+  for (const op of ops.filter((o) => o.op === 'add' && !o.isDir)) {
+    const full = ((op.parent || '').split('/').filter(Boolean)).concat([op.name]).join('/');
+    if (overlayKeySet.has(LS_EDIT_PREFIX + full)) continue; // zapsáno v kroku 3
+    try {
+      const h = await resolveFileHandle(root, full, { create: true });
+      await writeToFileHandle(h, '');
+      const n = state.byPath.get(full);
+      if (n) { n._handle = h; n._originalRaw = ''; }
+      written++;
+    } catch (e) {
+      errors.push({ path: full, op: 'touch', err: e.message });
+    }
+  }
+
+  // 5) clear treeOps (jen pokud vše prošlo) — částečný úspěch nech overlay/ops,
+  // ať uživatel může opakovat a vidět, co se nepodařilo
+  if (!errors.length) {
+    state.treeOps = [];
+    saveTreeOps([]);
+  }
+
+  try { window.dispatchEvent(new CustomEvent('fakan:tree-changed')); } catch {}
+  return { written, removed, dirsCreated, errors };
 }
 
 async function readNodeBytes(node, path) {
@@ -1800,15 +1974,17 @@ function renderPublishButton() {
     // (refreshPublishVisibility doplní viditelnost asynchronně).
     if (state.ghHasChanges === false) wrap.setAttribute('hidden', '');
     else wrap.removeAttribute('hidden');
-  } else if (state.uploadedSnapshot) {
-    glyph.textContent = '↓';
-    label.textContent = 'Stáhnout';
-    btn.setAttribute('aria-label', 'Stáhnout snapshot');
-    wrap.removeAttribute('hidden');
+  } else if (state.rootHandle) {
+    glyph.textContent = '↑';
+    label.textContent = 'Uložit';
+    btn.setAttribute('aria-label', `Uložit změny do ${state.rootHandle.name}`);
+    // dir: tlačítko jen když jsou nějaké LS edity / treeOps
+    if (hasLocalDirChanges()) wrap.removeAttribute('hidden');
+    else wrap.setAttribute('hidden', '');
   } else {
     glyph.textContent = '↓';
     label.textContent = 'Stáhnout';
-    btn.setAttribute('aria-label', 'Stáhnout složku jako ZIP');
+    btn.setAttribute('aria-label', 'Stáhnout jako ZIP');
     wrap.removeAttribute('hidden');
   }
 
@@ -1852,10 +2028,10 @@ async function runChangesCheck() {
 }
 
 // Veřejná funkce — volat po editu / vytvoření / smazání souboru, ať se viditelnost
-// Publish tlačítka průběžně aktualizuje.
+// Publish/Uložit tlačítka průběžně aktualizuje.
 export function refreshPublishVisibility() {
-  if (!state.githubSpec) return;
-  scheduleChangesCheck();
+  if (state.githubSpec) { scheduleChangesCheck(); return; }
+  if (state.rootHandle) { renderPublishButton(); return; }
 }
 
 // Posloucháme strom-mutující události z editoru / MC / shellu (mimo modul,
@@ -2003,8 +2179,10 @@ function showPublishDialog() {
   if (document.querySelector('[data-pub-dialog]')) return;
   if (state.githubSpec) {
     showGithubPublishDialog();
-  } else if (state.uploadedSnapshot || state.rootHandle) {
-    showLocalPublishDialog();
+  } else if (state.rootHandle) {
+    showDirSaveDialog();
+  } else if (state.uploadedSnapshot) {
+    showZipExportDialog();
   }
 }
 
@@ -2032,17 +2210,14 @@ function buildDialogShell(ariaLabel) {
   return { wrap, body: wrap.querySelector('[data-pub-body]'), close };
 }
 
-function showLocalPublishDialog() {
-  const isSnapshot = !!state.uploadedSnapshot;
-  const name = state.rootHandle?.name || state.uploadedSnapshot?.name || 'zdroj';
-  const { body, close } = buildDialogShell(isSnapshot ? 'Stáhnout snapshot' : 'Stáhnout složku');
+function showZipExportDialog() {
+  const name = state.uploadedSnapshot?.name || 'zdroj';
+  const { body, close } = buildDialogShell('Stáhnout jako ZIP');
 
-  const info = isSnapshot
-    ? `Snapshot <b>${escapeHtml(name)}</b> žije v paměti prohlížeče. Vaše úpravy se ukládají do <em>localStorage</em>. Pro persistenci si stáhněte aktuální verzi jako ZIP.`
-    : `Složka <b>${escapeHtml(name)}</b> je připojená přes prohlížeč. Úpravy v editoru se zatím <b>neukládají zpět na disk</b> — zápis do FS přes File System Access API není v fakanovi implementovaný. Změny žijí jen v <em>localStorage</em> tohoto prohlížeče. Pro persistenci si stáhněte ZIP a rozbalte ho přes původní složku.`;
+  const info = `Nahraná složka <b>${escapeHtml(name)}</b> žije jen v paměti prohlížeče. Vaše úpravy se ukládají do <em>localStorage</em>. Pro persistenci si stáhněte aktuální verzi jako ZIP a rozbalte ji přes původní složku.`;
 
   body.innerHTML = `
-    <h2 class="gh-dialog__title">${isSnapshot ? 'Stáhnout snapshot' : 'Stáhnout složku jako ZIP'}</h2>
+    <h2 class="gh-dialog__title">Stáhnout jako ZIP</h2>
     <p class="gh-dialog__hint">${info}</p>
     <div class="gh-dialog__buttons">
       <button type="button" class="gh-dialog__btn" data-pub-cancel>Zavřít</button>
@@ -2054,6 +2229,79 @@ function showLocalPublishDialog() {
   body.querySelector('[data-pub-download]').addEventListener('click', async () => {
     await exportAsZip();
     close();
+  });
+}
+
+function showDirSaveDialog() {
+  const name = state.rootHandle?.name || 'složka';
+  const { body, close } = buildDialogShell(`Uložit změny do ${name}`);
+  const sum = collectDirChangesSummary();
+  const total = sum.adds.length + sum.removes.length + sum.mods.length;
+
+  const renderChangeList = () => {
+    if (!total) return `<div class="pub-dialog__changes-empty">Žádné lokální změny.</div>`;
+    const row = (kind, path) =>
+      `<div class="pub-dialog__change pub-dialog__change--${kind}"><span class="pub-dialog__change-kind">${kind}</span><span class="pub-dialog__change-path">${escapeHtml(path)}</span></div>`;
+    const rows = [];
+    for (const a of sum.adds) rows.push(row('add', a.path + (a.kind === 'dir' ? '/' : '')));
+    for (const m of sum.mods) rows.push(row('mod', m.path));
+    for (const r of sum.removes) rows.push(row('del', r.path));
+    return rows.join('');
+  };
+
+  body.innerHTML = `
+    <div class="pub-dialog__head">
+      <span class="pub-dialog__repo">${escapeHtml(name)}</span>
+      <span class="pub-dialog__branch-ctx" aria-label="Typ zdroje">
+        <span class="pub-dialog__branch-glyph" aria-hidden="true">/</span>
+        <span>složka na disku</span>
+      </span>
+    </div>
+    <p class="gh-dialog__hint">Změny se zapíšou přímo do připojené složky přes File System Access API. Smazané soubory zmizí trvale.</p>
+    <div class="pub-dialog__changes" data-pub-changes>${renderChangeList()}</div>
+    <div class="gh-dialog__buttons">
+      <button type="button" class="gh-dialog__btn" data-pub-cancel>Zavřít</button>
+      <button type="button" class="gh-dialog__btn gh-dialog__btn--primary" data-pub-save ${total ? '' : 'disabled'}>Uložit změny</button>
+    </div>
+    <div class="pub-dialog__status" data-pub-status hidden></div>
+  `;
+
+  const cancelBtn = body.querySelector('[data-pub-cancel]');
+  const saveBtn = body.querySelector('[data-pub-save]');
+  const statusEl = body.querySelector('[data-pub-status]');
+  const setStatus = (msg, kind = '') => {
+    statusEl.hidden = false;
+    statusEl.textContent = msg;
+    if (kind) statusEl.setAttribute('data-kind', kind);
+    else statusEl.removeAttribute('data-kind');
+  };
+
+  cancelBtn.addEventListener('click', close);
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    cancelBtn.disabled = true;
+    setStatus('ukládám…');
+    try {
+      const res = await saveLocalEditsToFS({ onStatus: (m) => setStatus(m) });
+      const parts = [];
+      if (res.written) parts.push(`${res.written} souborů`);
+      if (res.removed) parts.push(`${res.removed} smazáno`);
+      if (res.dirsCreated) parts.push(`${res.dirsCreated} adresářů`);
+      if (res.errors.length) {
+        setStatus(`Hotovo s chybami (${res.errors.length}): ${res.errors[0].path} — ${res.errors[0].err}`, 'err');
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        renderPublishButton();
+        return;
+      }
+      setStatus(`Uloženo: ${parts.join(', ') || 'beze změn'}.`, 'ok');
+      renderPublishButton();
+      setTimeout(close, 800);
+    } catch (e) {
+      setStatus(`Chyba: ${e.message}`, 'err');
+      saveBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
   });
 }
 
@@ -2249,15 +2497,15 @@ export function renderSourceMenu() {
     for (const entry of past) {
       const row = document.createElement('div');
       row.className = 'srcbar__item srcbar__item--recent';
-      if (entry.type === 'snapshot') row.classList.add('srcbar__item--dim');
+      if (entry.type === 'zip') row.classList.add('srcbar__item--dim');
 
       const main = document.createElement('button');
       main.type = 'button';
       main.className = 'srcbar__item-main';
-      const icon = entry.type === 'handle' ? '/' : entry.type === 'github' ? '⎇' : '⤓';
+      const icon = entry.type === 'dir' ? '/' : entry.type === 'git' ? '⎇' : '⤓';
       main.innerHTML = `<span class="srcbar__item-icon" aria-hidden="true">${icon}</span><span class="srcbar__item-label">${escapeHtml(entry.label)}</span>`;
-      if (entry.type === 'snapshot') {
-        main.title = 'Snapshot — pro otevření nahrajte složku znovu';
+      if (entry.type === 'zip') {
+        main.title = 'Nahraná složka — pro otevření ji nahrajte znovu';
       }
       main.addEventListener('click', () => {
         closeMenu();
