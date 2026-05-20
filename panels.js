@@ -1089,18 +1089,32 @@ function setupPanelInteractions(panel) {
   let snapZone = null;
   head.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.panel__btn')) return;
-    if (panel.dock) restorePanel(panel); // začneš tahat dokovaný panel → odepni
     bringToFront(el);
+    // Spočti offset prstu vůči levému/hornímu rohu panelu PŘED case restore.
+    // Po restore se panel zmenší (nebo přepne ze 'bottom' dock na default
+    // floating pozici), takže držet ho pod prstem znamená přepočítat left/top
+    // z offsetu, ne z rect.left/top.
+    const beforeRect = el.getBoundingClientRect();
+    let offsetX = e.clientX - beforeRect.left;
+    let offsetY = e.clientY - beforeRect.top;
+    if (panel.dock) {
+      restorePanel(panel);
+      const afterRect = el.getBoundingClientRect();
+      // pokud panel po restore nemá takovou šířku, omez offset, ať prst neskončí mimo
+      if (offsetX > afterRect.width - 8) offsetX = Math.max(8, afterRect.width / 2);
+      if (offsetY > afterRect.height - 8) offsetY = Math.max(8, afterRect.height / 2);
+    }
     dragging = true;
     snapZone = null;
     head.classList.add('is-dragging');
-    const rect = el.getBoundingClientRect();
-    el.style.left = `${rect.left}px`;
-    el.style.top = `${rect.top}px`;
+    const newLeft = e.clientX - offsetX;
+    const newTop = e.clientY - offsetY;
+    el.style.left = `${newLeft}px`;
+    el.style.top = `${newTop}px`;
     el.style.right = 'auto';
     el.style.bottom = 'auto';
     startX = e.clientX; startY = e.clientY;
-    startLeft = rect.left; startTop = rect.top;
+    startLeft = newLeft; startTop = newTop;
     try { head.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
   });
