@@ -22,17 +22,19 @@ test.describe('Badge meta', () => {
     await expect(gh).toHaveAttribute('rel', /noopener/);
   });
 
-  test('kontakt je mailto: na hromada.dan@gmail.com', async ({ page }) => {
-    const mail = page.locator(`${SEL.badge} a`, { hasText: 'kontakt' });
-    await expect(mail).toBeVisible();
-    await expect(mail).toHaveAttribute('href', /^mailto:hromada\.dan@gmail\.com/);
+  test('kontakt otevírá interní dialog (data-badge-contact)', async ({ page }) => {
+    const kontakt = page.locator(`${SEL.badge} a`, { hasText: 'kontakt' });
+    await expect(kontakt).toBeVisible();
+    await expect(kontakt).toHaveAttribute('data-badge-contact', '');
   });
 
-  test('help a přispět otevírají interní dialog (href="#")', async ({ page }) => {
+  test('help, přispět, kontakt otevírají interní dialog (href="#")', async ({ page }) => {
     const help = page.locator(`${SEL.badge} a`, { hasText: 'help' });
     const tip = page.locator(`${SEL.badge} a`, { hasText: 'přispět' });
+    const kontakt = page.locator(`${SEL.badge} a`, { hasText: 'kontakt' });
     await expect(help).toHaveAttribute('href', '#');
     await expect(tip).toHaveAttribute('href', '#');
+    await expect(kontakt).toHaveAttribute('href', '#');
   });
 
   test('hledat pill je v srcbaru a otevírá search dialog', async ({ page }) => {
