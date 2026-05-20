@@ -611,6 +611,32 @@ function createPanel(node, variant) {
   return panel;
 }
 
+// Mobile = úzký viewport. Pod 720px je drag-floating k ničemu — okna se chovají
+// jako celostránkové sekce (full / top / bottom).
+function isMobileViewport() {
+  return window.innerWidth < 720;
+}
+
+// Tall = obsah, u kterého očekáváme, že přeteče default výšku panelu (380/480 px).
+// Heuristika podle typu uzlu — nečekáme na měření po renderu, aby panel neskákal.
+// Krátký .md (řekněme < 800 znaků) zůstane v default boxíku; vše ostatní s renderem
+// (HTML, dir s indexem, media, web snapshot, dlouhý markdown) startuje na plnou výšku.
+function expectedTall(node) {
+  if (!node) return false;
+  if (node.type === 'terminal' || node.type === 'mc') return false;
+  if (node.type === 'dir') return !!dirIndexHtml(node) || (state.childrenByPath.get(node.path || '') || []).length > 6;
+  if (node.kind === 'web') return true;
+  if (mediaKind(node)) return true;
+  if (node.kind === 'md') {
+    const body = node.content || node.raw || '';
+    if (body.length > 800) return true;
+    return !!node.path && body.length === 0; // ještě nenačtený — bezpečnější naložit větší
+  }
+  const fn = (node.filename || node.name || '').toLowerCase();
+  if (fn.endsWith('.html') || fn.endsWith('.htm')) return true;
+  return false;
+}
+
 // Snap zones — bottom prostor 64px nechává místo na nav.
 const DOCK_STYLES = {
   full:   { left: '8px',  top: 'calc(8px + var(--safe-t))',  right: '8px',  bottom: 'calc(64px + var(--safe-b))', width: 'auto',                                         height: 'auto' },
@@ -631,6 +657,8 @@ function updateDockButtons(panel) {
 
 export function dockPanel(panel, zone) {
   const el = panel.element;
+  // na úzkém viewportu side-dock nedává smysl — fallback na full
+  if (isMobileViewport() && (zone === 'left' || zone === 'right')) zone = 'full';
   // toggle: kliknutí na aktivní zónu = restore
   if (panel.dock === zone) { restorePanel(panel); return; }
   // první přechod z floating → save pozice pro restore
@@ -670,12 +698,14 @@ function restorePanel(panel) {
 // Snap detection podle pozice kurzoru u okraje viewportu.
 // 24px proužek u kraje obrazovky → snap do dané zóny.
 // 80px u spodního okraje aby nav (~64px + safe-b) nebyl ve sweet-spotu.
+// Na mobilu dáváme jen vertikální zóny — left/right jsou na úzkém viewportu k ničemu.
 const SNAP_T = 24;
 function getSnapZone(x, y) {
   const vw = window.innerWidth;
   const vh = window.innerHeight;
-  if (x < SNAP_T) return 'left';
-  if (x > vw - SNAP_T) return 'right';
+  const mobile = isMobileViewport();
+  if (!mobile && x < SNAP_T) return 'left';
+  if (!mobile && x > vw - SNAP_T) return 'right';
   if (y < SNAP_T) return 'top';
   if (y > vh - 80) return 'bottom';
   return null;
@@ -725,6 +755,39 @@ function positionPanel(panel) {
 function rememberPanelPos(el) {
   const rect = el.getBoundingClientRect();
   state.lastPanelPos = { left: rect.left, top: rect.top };
+}
+
+// Vrátí volnou mobile zónu pro preview / follower. Bottom je default,
+// pokud už něco bottom obsazuje, jde to nahoru. Když je obsazené obojí,
+// zvolí full (panel se schová pod druhý — uživatel může přepnout taby).
+function pickMobileSlot(exclude) {
+  let bottomTaken = false;
+  let topTaken = false;
+  for (const p of allPanels()) {
+    if (p === exclude) continue;
+    if (p.dock === 'bottom') bottomTaken = true;
+    else if (p.dock === 'top') topTaken = true;
+  }
+  if (!bottomTaken) return 'bottom';
+  if (!topTaken) return 'top';
+  return 'full';
+}
+
+// Auto-layout po otevření panelu. Volá se z openMain/openPreview/openAsFollower
+// — položí panel buď na celou výšku (desktop + dlouhý obsah) nebo do mobile docku.
+function applyAutoLayout(panel) {
+  if (isMobileViewport()) {
+    if (panel.variant === 'main') { dockPanel(panel, 'full'); return; }
+    // preview / follower → bottom (default), jinak top
+    dockPanel(panel, pickMobileSlot(panel));
+    return;
+  }
+  // desktop: tall obsah dostane plnou výšku, šířka zůstává default
+  if (!expectedTall(panel.node)) return;
+  const el = panel.element;
+  el.style.top = 'calc(8px + var(--safe-t))';
+  el.style.bottom = 'calc(64px + var(--safe-b))';
+  el.style.height = 'auto';
 }
 
 // --- editor mount / persist -------------------------------------------------
@@ -1158,6 +1221,7 @@ export function openMain(node) {
   positionPanel(panel);
   document.getElementById('panels').appendChild(panel.element);
   setupPanelInteractions(panel);
+  applyAutoLayout(panel);
   bringToFront(panel.element);
   state.mainPanel = panel;
   syncFromState();
@@ -1180,6 +1244,7 @@ export function openPreview(node) {
   positionPanel(panel);
   document.getElementById('panels').appendChild(panel.element);
   setupPanelInteractions(panel);
+  applyAutoLayout(panel);
   bringToFront(panel.element);
   state.previewPanels.set(path, panel);
   if (state.panelNavListener) state.panelNavListener();
@@ -1223,7 +1288,9 @@ export function openAsFollower(node) {
   // jinak vyrobím nový preview a označím jako follower
   const panel = createPanel(node, 'preview');
   panel.autofocusEditor = false;
-  if (state.lastFollowerStyles) {
+  // na mobilu ignorujeme uloženou geometrii — follower vždy do mobile slotu
+  const useLastStyles = !isMobileViewport() && state.lastFollowerStyles;
+  if (useLastStyles) {
     const s = state.lastFollowerStyles;
     if (s.left) panel.element.style.left = s.left;
     if (s.top) panel.element.style.top = s.top;
@@ -1236,6 +1303,9 @@ export function openAsFollower(node) {
   }
   document.getElementById('panels').appendChild(panel.element);
   setupPanelInteractions(panel);
+  // mobile: vždy doruč na bottom/top; desktop: tall layout jen pokud uživatel
+  // followera ručně nepřemístil (lastFollowerStyles by jinak přepsali)
+  if (isMobileViewport() || !useLastStyles) applyAutoLayout(panel);
   bringToFront(panel.element);
   state.previewPanels.set(path, panel);
   state.followerPanel = panel;
