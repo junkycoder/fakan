@@ -19,6 +19,22 @@ export async function bootApp(page) {
   }
   await page.goto('/');
   await waitForMindmap(page);
+  // Autoplay default index (maybeOpenDefaultIndex v boot.js) otevře maximalizovaný panel
+  // s fakan.cz/index.html v sandboxovaném iframe — pro většinu specs je to noise.
+  // Zavři všechny panely, ať testy startují s clean state.
+  await page.evaluate(() => {
+    const f = window.__fakan;
+    if (!f?.state) return;
+    if (f.state.mainPanel) { f.state.mainPanel.element.remove(); f.state.mainPanel = null; }
+    if (f.state.previewPanels) {
+      for (const p of f.state.previewPanels.values()) p.element.remove();
+      f.state.previewPanels.clear();
+    }
+    f.state.activePanel = null;
+    // Autoplay nastaví focusedPath na index.html; reset na root, ať testy
+    // šipek startují deterministicky z fakan.cz rootu.
+    f.state.focusedPath = '';
+  });
   await page.locator(SEL.canvas).focus();
 }
 
@@ -79,13 +95,21 @@ export async function findTwoMds(page) {
  */
 export function trackConsoleErrors(page) {
   const errors = [];
-  page.on('pageerror', (err) => errors.push(`pageerror: ${err.message}`));
+  // Sandbox bez allow-same-origin (panels.js iframe pro html preview) blokuje localStorage.
+  // Aplikační kód má try/catch (ci-client.js, mindmap.js), takže pageerror je hluk z bublající
+  // chyby skriptu uvnitř iframe, ne reálná regrese.
+  const SANDBOX_NOISE = /sandboxed and lacks the 'allow-same-origin' flag/i;
+  page.on('pageerror', (err) => {
+    if (SANDBOX_NOISE.test(err.message)) return;
+    errors.push(`pageerror: ${err.message}`);
+  });
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
     // Generický browser log pro 4xx/5xx network response — aplikace ho nemůže potlačit
     // a fetch je obalený v try/catch (např. optional .fokrc soubor). Ne-aplikační noise.
     if (/Failed to load resource/i.test(text)) return;
+    if (SANDBOX_NOISE.test(text)) return;
     errors.push(`console.error: ${text}`);
   });
   return {
