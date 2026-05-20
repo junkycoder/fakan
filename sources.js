@@ -2463,6 +2463,14 @@ export function renderSourceMenu() {
     label: 'Připojit GitHub',
     onClick: showGithubDialog,
   });
+  if (state.githubSpec) {
+    const { owner, repo } = state.githubSpec;
+    items.push({
+      label: 'Pozvat ke spolupráci…',
+      onClick: () => window.open(`https://github.com/${owner}/${repo}/settings/access`, '_blank', 'noopener'),
+      title: `Otevře nastavení přístupu pro ${owner}/${repo} na GitHubu, kde můžete přidat spolupracovníka.`,
+    });
+  }
   if (!state.githubSpec && hasSource) {
     items.push({ label: 'Stáhnout jako ZIP', onClick: exportAsZip });
   } else if (!hasSource) {
