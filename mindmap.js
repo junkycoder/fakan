@@ -677,24 +677,44 @@ export function setupViewport(canvas, viewport, getView) {
     panToNode(node);
   };
 
-  // pan
+  // pan — tracker aktivních pointerů, aby pinch (2+ prsty na iOS) neházel pan
+  // sem-tam mezi pozicemi prstů. Pan jede jen pro single-pointer; jakmile přibude
+  // druhý prst, pan se zruší a obnoví se až po release všech prstů.
+  const activePointers = new Set();
+  let panPointerId = null;
   canvas.addEventListener('pointerdown', (e) => {
     if (e.target.closest('.hit')) return;
+    activePointers.add(e.pointerId);
+    if (activePointers.size > 1) {
+      // pinch — zruš případný rozjetý pan
+      if (panning) {
+        panning = false;
+        canvas.classList.remove('is-panning');
+        if (panPointerId != null) {
+          try { canvas.releasePointerCapture(panPointerId); } catch {}
+        }
+        panPointerId = null;
+      }
+      return;
+    }
     panning = true;
+    panPointerId = e.pointerId;
     canvas.classList.add('is-panning');
     startX = e.clientX; startY = e.clientY;
     startTx = tx; startTy = ty;
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!panning) return;
+    if (!panning || e.pointerId !== panPointerId) return;
     tx = startTx + (e.clientX - startX);
     ty = startTy + (e.clientY - startY);
     apply();
   });
   const endPan = (e) => {
-    if (!panning) return;
+    activePointers.delete(e.pointerId);
+    if (!panning || e.pointerId !== panPointerId) return;
     panning = false;
+    panPointerId = null;
     canvas.classList.remove('is-panning');
     try { canvas.releasePointerCapture(e.pointerId); } catch {}
   };
