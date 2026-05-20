@@ -2676,7 +2676,7 @@ export function mountBadge() {
         <span class="badge__meta-sep" aria-hidden="true">·</span>
         <a class="badge__meta" href="https://github.com/junkycoder/fakan" target="_blank" rel="noopener">github</a>
         <span class="badge__meta-sep" aria-hidden="true">·</span>
-        <a class="badge__meta" href="mailto:hromada.dan@gmail.com?subject=Zdrav%C3%ADm%20z%20fakan.cz">kontakt</a>
+        <a class="badge__meta" href="#" data-badge-contact>kontakt</a>
       </div>
     </div>
   `;
@@ -2688,6 +2688,10 @@ export function mountBadge() {
   wrap.querySelector('[data-badge-help]').addEventListener('click', (e) => {
     e.preventDefault();
     showHelpDialog();
+  });
+  wrap.querySelector('[data-badge-contact]').addEventListener('click', (e) => {
+    e.preventDefault();
+    showContactDialog();
   });
   // Po kliku na jakýkoli odkaz menu zavřít (mobil)
   wrap.querySelectorAll('.badge__links a').forEach((a) => {
@@ -2991,5 +2995,131 @@ function showTipDialog() {
       copyBtn.textContent = orig;
       copyBtn.disabled = false;
     }, 1800);
+  });
+}
+
+// --- Contact dialog --------------------------------------------------------
+
+function currentGithubRepoLabel() {
+  // Nabídneme repo jen pokud user aktuálně kouká na github source bez tokenu
+  // (= veřejný repo, fakan ho fetchnul anonymně). Privátní (s tokenem)
+  // do formu netáhneme, ať si nikdo neposílá info o privátním repu omylem.
+  const gh = state.githubSpec;
+  if (!gh || !gh.owner || !gh.repo) return null;
+  if (gh.token) return null;
+  const branch = gh.branch ? `@${gh.branch}` : '';
+  return `github:${gh.owner}/${gh.repo}${branch}`;
+}
+
+function showContactDialog() {
+  document.querySelector('[data-contact-dialog]')?.remove();
+
+  const repoLabel = currentGithubRepoLabel();
+  const repoBlock = repoLabel ? `
+    <label class="contact-dialog__repo">
+      <input type="checkbox" data-contact-repo checked>
+      <span>
+        Přiložit i adresu repa, na který se právě dívám:
+        <code>${escapeHtml(repoLabel)}</code>
+      </span>
+    </label>
+  ` : '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'contact-dialog';
+  wrap.setAttribute('data-contact-dialog', '');
+  wrap.innerHTML = `
+    <div class="contact-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="contact-title">
+      <button type="button" class="contact-dialog__close" data-contact-close aria-label="Zavřít">×</button>
+      <h2 class="contact-dialog__title" id="contact-title">Napište mi</h2>
+      <p class="contact-dialog__intro">
+        Nechte mi e-mail a já se vám ozvu — k čemukoli kolem fakana.
+        Žádný newsletter, žádný marketing.
+      </p>
+      <form class="contact-dialog__form" data-contact-form novalidate>
+        <label class="contact-dialog__label" for="contact-email">Váš e-mail</label>
+        <input
+          class="contact-dialog__input"
+          type="email"
+          id="contact-email"
+          name="email"
+          required
+          autocomplete="email"
+          placeholder="vy@example.com"
+          data-contact-email
+        >
+        ${repoBlock}
+        <p class="contact-dialog__privacy">
+          Ukládáme jen to, co vidíte v tomhle formuláři — e-mail${repoLabel ? ' a (pokud necháte zaškrtnuto) repo' : ''}.
+          Nic skrytého, žádné sledování, žádné předávání třetím stranám.
+        </p>
+        <div class="contact-dialog__status" data-contact-status aria-live="polite"></div>
+        <div class="contact-dialog__buttons">
+          <button type="button" class="contact-dialog__btn" data-contact-close>Zrušit</button>
+          <button type="submit" class="contact-dialog__btn contact-dialog__btn--primary" data-contact-submit>Napište mi</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    wrap.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); }
+  };
+  document.addEventListener('keydown', onKey);
+  wrap.addEventListener('click', (e) => { if (e.target === wrap) close(); });
+  wrap.querySelectorAll('[data-contact-close]').forEach((b) => b.addEventListener('click', close));
+
+  // Auto-focus e-mail
+  setTimeout(() => wrap.querySelector('[data-contact-email]')?.focus(), 30);
+
+  const form = wrap.querySelector('[data-contact-form]');
+  const emailInput = wrap.querySelector('[data-contact-email]');
+  const repoCheckbox = wrap.querySelector('[data-contact-repo]');
+  const statusEl = wrap.querySelector('[data-contact-status]');
+  const submitBtn = wrap.querySelector('[data-contact-submit]');
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = (emailInput.value || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      statusEl.textContent = 'Zadejte prosím platný e-mail.';
+      statusEl.setAttribute('data-kind', 'err');
+      emailInput.focus();
+      return;
+    }
+    const payload = { email };
+    if (repoLabel && repoCheckbox?.checked) payload.repo = repoLabel;
+
+    submitBtn.disabled = true;
+    statusEl.removeAttribute('data-kind');
+    statusEl.textContent = 'Odesílám…';
+
+    try {
+      const res = await fetch('/api/userlist', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        statusEl.textContent = data?.error || `Něco se nepodařilo (HTTP ${res.status}).`;
+        statusEl.setAttribute('data-kind', 'err');
+        submitBtn.disabled = false;
+        return;
+      }
+      statusEl.textContent = 'Hotovo — ozvu se vám.';
+      statusEl.setAttribute('data-kind', 'ok');
+      // krátká pauza, ať uživatel uvidí potvrzení
+      setTimeout(close, 1400);
+    } catch (err) {
+      statusEl.textContent = 'Síť selhala. Zkuste to za chvíli.';
+      statusEl.setAttribute('data-kind', 'err');
+      submitBtn.disabled = false;
+    }
   });
 }

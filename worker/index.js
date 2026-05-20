@@ -120,6 +120,9 @@ async function handleApi(request, env, ctx, url) {
   if (url.pathname === '/api/run') {
     return handleRun(request, env, url);
   }
+  if (url.pathname === '/api/userlist' && request.method === 'POST') {
+    return handleUserlistSubmit(request, env);
+  }
 
   // --- tunnel: pairing & machine registry (iterace 10a) --------------------
   // Browser → auth přes RUNNER_SECRET v ?token=. Agent claim je no-auth (pair
@@ -352,6 +355,69 @@ async function runMock(script, ws, isKilled) {
   send(ws, { type: 'stdout', line: '' });
   send(ws, { type: 'stdout', line: '[mock: žádný skutečný shell — Cloudflare Containers přijdou v další iteraci]' });
   send(ws, { type: 'exit', code: 0 });
+}
+
+// --- userlist (kontakt form) -----------------------------------------------
+// POST /api/userlist  body: { email, repo? }
+// UPSERT do D1 — opakovaný submit přepíše předchozí. Bez auth (veřejný kontakt
+// form), ale s rate-limitem 1 / IP / 60s přes KV RUNNER_QUOTA.
+
+async function handleUserlistSubmit(request, env) {
+  if (!env.USERLIST) {
+    return json({ error: 'userlist není nakonfigurováno' }, { status: 503 });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: 'invalid JSON' }, { status: 400 }); }
+
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const repo = typeof body?.repo === 'string' && body.repo.trim() ? body.repo.trim().slice(0, 200) : null;
+
+  // Konzervativní validace: RFC 5322 light (local@domain.tld), max 254 znaků.
+  if (!email || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ error: 'Zadejte prosím platný e-mail.' }, { status: 400 });
+  }
+
+  // Rate limit: ip → 60s cooldown. Bez KV se gate vypne (lokální dev).
+  const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '';
+  if (env.RUNNER_QUOTA && ip) {
+    const ipHash = await sha256Hex(ip);
+    const rlKey = `userlist:rl:${ipHash}`;
+    const seen = await env.RUNNER_QUOTA.get(rlKey);
+    if (seen) {
+      return json({ error: 'Moment — chvilku počkejte a zkuste to znovu.' }, { status: 429 });
+    }
+    await env.RUNNER_QUOTA.put(rlKey, '1', { expirationTtl: 60 });
+  }
+
+  const ipHash = ip ? await sha256Hex(ip) : null;
+  const ua = (request.headers.get('user-agent') || '').slice(0, 200) || null;
+  const ts = Date.now();
+
+  try {
+    await env.USERLIST.prepare(
+      `INSERT INTO userlist (email, repo, ts, ip_hash, user_agent)
+       VALUES (?1, ?2, ?3, ?4, ?5)
+       ON CONFLICT(email) DO UPDATE SET
+         repo = excluded.repo,
+         ts = excluded.ts,
+         ip_hash = excluded.ip_hash,
+         user_agent = excluded.user_agent`
+    ).bind(email, repo, ts, ipHash, ua).run();
+  } catch (e) {
+    return json({ error: 'Uložení selhalo, zkuste to znovu později.' }, { status: 500 });
+  }
+
+  return json({ ok: true });
+}
+
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
+  const bytes = new Uint8Array(buf);
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0');
+  return hex;
 }
 
 function constantTimeEqual(a, b) {

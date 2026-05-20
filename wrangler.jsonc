@@ -35,6 +35,22 @@
 			"preview_id": "0442f7239e1b4759b005b8241acc39e6"
 		}
 	],
+	// D1 databáze pro „userlist" — seznam lidí, kteří přes kontakt-form řekli
+	// „napište mi". Schéma viz worker/migrations/0001_userlist.sql.
+	//
+	// Jednorázový setup:
+	//   wrangler d1 create userlist                          → vrátí database_id
+	//   (doplnit ID dole)
+	//   wrangler d1 migrations apply userlist --remote       → aplikuje migraci
+	//   wrangler d1 migrations apply userlist --local        → pro `wrangler dev`
+	"d1_databases": [
+		{
+			"binding": "USERLIST",
+			"database_name": "userlist",
+			"database_id": "PLACEHOLDER_RUN_WRANGLER_D1_CREATE",
+			"migrations_dir": "worker/migrations"
+		}
+	],
 	// Analytics Engine — anonymní agregát návštěvnosti (země, region, colo).
 	// Zápis přes env.ANALYTICS.writeDataPoint je zdarma do 10M datapointů/měsíc.
 	// Čtení (worker/analytics.js → handleStats) volá Cloudflare GraphQL API a

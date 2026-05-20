@@ -1817,6 +1817,168 @@ body.dnd-active .hit:hover { background: transparent; }
   border-color: var(--c-yellow);
 }
 
+/* --- Contact dialog ------------------------------------------------------ */
+.contact-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: color-mix(in oklab, var(--bg) 60%, transparent);
+  backdrop-filter: blur(8px);
+}
+.contact-dialog__panel {
+  position: relative;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: min(460px, 100%);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 18px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  font-family: var(--mono);
+}
+.contact-dialog__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+}
+.contact-dialog__close:hover {
+  color: var(--fg);
+  background: color-mix(in oklab, var(--c-red) 18%, transparent);
+}
+.contact-dialog__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--fg);
+}
+.contact-dialog__intro {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.contact-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.contact-dialog__label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.contact-dialog__input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 5%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 11px;
+  box-sizing: border-box;
+  outline: none;
+}
+.contact-dialog__input:focus {
+  border-color: var(--c-yellow);
+  background: color-mix(in oklab, var(--c-yellow) 8%, transparent);
+}
+.contact-dialog__repo {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  padding: 8px 10px;
+  background: color-mix(in oklab, var(--c-blue) 8%, transparent);
+  border: 1px solid color-mix(in oklab, var(--c-blue) 25%, transparent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.contact-dialog__repo input[type="checkbox"] {
+  margin: 3px 0 0;
+  accent-color: var(--c-blue);
+  cursor: pointer;
+}
+.contact-dialog__repo code {
+  display: inline-block;
+  margin-top: 2px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--fg);
+  background: color-mix(in oklab, var(--fg) 8%, transparent);
+  padding: 1px 5px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+.contact-dialog__privacy {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.contact-dialog__status {
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.contact-dialog__status[data-kind="err"] { color: var(--c-red); }
+.contact-dialog__status[data-kind="ok"]  { color: var(--c-green); }
+.contact-dialog__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+.contact-dialog__btn {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+.contact-dialog__btn:hover {
+  border-color: var(--c-yellow);
+  background: color-mix(in oklab, var(--c-yellow) 18%, transparent);
+}
+.contact-dialog__btn:disabled { opacity: 0.55; cursor: default; }
+.contact-dialog__btn--primary {
+  background: var(--c-yellow);
+  border-color: var(--c-yellow);
+  color: #15151a;
+}
+.contact-dialog__btn--primary:hover {
+  background: color-mix(in oklab, var(--c-yellow) 85%, var(--fg));
+  border-color: color-mix(in oklab, var(--c-yellow) 85%, var(--fg));
+}
+
 /* --- search dialog ------------------------------------------------------- */
 .search-dialog {
   position: fixed;
