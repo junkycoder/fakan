@@ -556,9 +556,15 @@ function ghAuthHeaders(spec) {
   return spec.token ? { Authorization: `Bearer ${spec.token}` } : {};
 }
 
-async function ghApi(spec, path) {
+export async function ghApi(spec, path, init) {
   const r = await fetch(`https://api.github.com${path}`, {
-    headers: { Accept: 'application/vnd.github+json', ...ghAuthHeaders(spec) },
+    method: init?.method || 'GET',
+    headers: {
+      Accept: 'application/vnd.github+json',
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...ghAuthHeaders(spec),
+    },
+    body: init?.body,
   });
   if (!r.ok) {
     const remaining = r.headers.get('x-ratelimit-remaining');
@@ -582,6 +588,7 @@ async function ghApi(spec, path) {
       : `GitHub ${r.status}`;
     throw new Error(msg);
   }
+  if (r.status === 204) return null;
   return r.json();
 }
 
@@ -599,7 +606,7 @@ async function ghFetchText(spec, filePath) {
   return r.text();
 }
 
-async function ghListBranches(spec) {
+export async function ghListBranches(spec) {
   const out = [];
   let page = 1;
   while (page <= 5) {
@@ -635,7 +642,25 @@ async function loadFromGithub(spec, onStatus) {
   try { patterns = loadFokrcPatterns(await ghFetchText(spec, '.fokrc')); } catch {}
 
   note('načítám strom…');
-  const data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
+  let data;
+  try {
+    data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
+  } catch (err) {
+    // Pokud daná větev neexistuje (404 / „špatná větev"), fallback na
+    // default_branch repa. Stává se zejména u stalá volby v IDB (např. když
+    // user kdysi přepnul na branch, která pak v repu zanikla).
+    const msg = String(err && err.message || '');
+    const looksLikeMissingBranch = /neexistuje|špatná větev/i.test(msg);
+    if (!looksLikeMissingBranch) throw err;
+    note('větev neexistuje, zkouším default…');
+    const repo = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}`);
+    const fallback = repo.default_branch || 'main';
+    if (fallback === spec.branch) throw err;
+    console.warn(`GitHub: větev „${spec.branch}" neexistuje, padám na „${fallback}"`);
+    spec.branch = fallback;
+    try { patterns = loadFokrcPatterns(await ghFetchText(spec, '.fokrc')); } catch {}
+    data = await ghApi(spec, `/repos/${spec.owner}/${spec.repo}/git/trees/${encodeURIComponent(spec.branch)}?recursive=1`);
+  }
   if (data.truncated) console.warn('GitHub tree truncated — některé soubory chybí');
 
   const depthOf = (p) => p === '' ? 0 : p.split('/').length;
@@ -1022,7 +1047,7 @@ async function loadAndMountSnapshot(files, opts = {}) {
   });
 }
 
-async function connectGithub(spec, onStatus) {
+export async function connectGithub(spec, onStatus) {
   return withMountLock(`${spec.owner}/${spec.repo}`, async () => {
     const label = `Otevírám ${spec.owner}/${spec.repo}${spec.branch ? `@${spec.branch}` : ''}…`;
     showSourceLoader(label);
@@ -1819,7 +1844,7 @@ function bytesToBase64(bytes) {
 // Vrací entries `{ path, kind, data? }` kde kind ∈ {'add', 'mod', 'del'}.
 // Pro 'del' chybí `data`. Pokud baseline neexistuje (jiný zdroj než GitHub),
 // vrací prázdné pole — Publish dialog se stejně nezobrazuje bez githubSpec.
-async function collectGithubPushFiles(tree) {
+export async function collectGithubPushFiles(tree) {
   if (!tree || !state.ghBaselineKey) return [];
   const enc = new TextEncoder();
   const candidates = [];
@@ -1867,7 +1892,7 @@ async function collectGithubPushFiles(tree) {
   return out;
 }
 
-async function ghPush(spec, message, files, onStatus) {
+export async function ghPush(spec, message, files, onStatus) {
   const note = (m) => { if (onStatus) onStatus(m); };
   const headers = {
     'Content-Type': 'application/json',
