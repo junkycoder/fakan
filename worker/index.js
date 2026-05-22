@@ -28,6 +28,7 @@ import {
   handlePair, handleClaim, handleMachines, handleRevoke,
   handleAgentConnect, handleBrowserConnect,
 } from './tunnel.js';
+import { handleWww } from './www.js';
 export { TunnelRelay } from './tunnel-relay.js';
 import { DurableObject } from 'cloudflare:workers';
 
@@ -79,12 +80,25 @@ export default {
         return new Response(`api error: ${e && e.message ? e.message : e}`, { status: 500 });
       }
     }
+    // www.fakan.cz = bejkárna, server-rendered MD z `junkycoder/blendid`.
+    // Mindmapa zůstává na apex `fakan.cz`. Lokální dev opt-in přes ?www=1.
+    if (isWwwHost(url) || url.searchParams.get('www') === '1') {
+      try {
+        return await handleWww(request, env, ctx, url);
+      } catch (e) {
+        return new Response(`www error: ${e && e.message ? e.message : e}`, { status: 500 });
+      }
+    }
     // Anonymní agregát — jen HTML navigace (Sec-Fetch-Dest:document), žádná
     // assets ani API. Žádné cookies, žádné identifikátory.
     if (isPageView(request, url)) trackVisit(request, env, ctx);
     return env.ASSETS.fetch(request);
   },
 };
+
+function isWwwHost(url) {
+  return url.host === 'www.fakan.cz' || url.host.startsWith('www.');
+}
 
 async function handleApi(request, env, ctx, url) {
   const origin = request.headers.get('Origin');
