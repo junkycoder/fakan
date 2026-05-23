@@ -519,6 +519,18 @@ body.dnd-active .hit:hover { background: transparent; }
   z-index: 999;
 }
 .snap-preview.is-visible { opacity: 1; }
+/* mobile edge-to-edge: dock zóny lepí na okraj obrazovky, takže
+   ani preview obdélník ani docknutý panel nemají boční zaoblení / line. */
+.snap-preview--edge { border-radius: 0; border-left: 0; border-right: 0; }
+@media (max-width: 719px) {
+  .panel.panel--dock-full,
+  .panel.panel--dock-top,
+  .panel.panel--dock-bottom {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+}
 
 /* zobrazení zdroje */
 .src {
