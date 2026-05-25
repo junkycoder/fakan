@@ -4,7 +4,7 @@
     {
       "name": "fakan",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "python3 bin/serve.py $PORT"],
+      "runtimeArgs": ["-c", "cd mindmap && python3 bin/serve.py $PORT"],
       "port": 5173,
       "autoPort": true
     }

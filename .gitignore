@@ -41,6 +41,6 @@ coverage/
 .claude/worktrees/
 
 # Playwright testy (běhové artefakty; specs/, promo/, screenshots/ jsou commitované)
-tests/test-results/
-tests/playwright-report/
-tests/playwright/.cache/
+mindmap/tests/test-results/
+mindmap/tests/playwright-report/
+mindmap/tests/playwright/.cache/
