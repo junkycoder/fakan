@@ -2,13 +2,40 @@
 
 Instrukce pro Claude Code session, která otevírá tento repo.
 
+> **PROBÍHÁ MIGRACE struktury** (větev `base`).
+> Cíl: root = jen složky + docs. Každá top-level složka = jedna subdoména
+> (`apex/`, `www/`, `new/`, `mindmap/`, …). Detail v [`README.md`](README.md)
+> a v [`WIP_NOTES.md`](WIP_NOTES.md). Některé sekce níže (cesty `worker/index.js`,
+> `bin/build.sh`, `index.html` v rootu, …) **budou po migraci platit relativně
+> k `mindmap/`**, ne k rootu. Až bude migrace hotová, tenhle warning se smaže
+> a paths se zaktualizují.
+
 ## Co to je
 
-`fakan` — frontendový „přehrávač" mindmapy + tenký Cloudflare Worker backend (statika, CI runner, tunel na vlastní stroj, anonymní stats, kontaktní D1 userlist). Repo obsahuje **jen UI a infrastrukturu**. **Žádný uživatelský obsah.**
+`fakan` — monorepo pro vše pod doménou `fakan.cz`. Každá top-level
+složka = jedna subdoména s vlastním Cloudflare Workerem. Mapa subdomén
+viz [`README.md`](README.md). Pravidla pro libovolného AI agenta
+([`AGENTS.md`](AGENTS.md)) jsou nadmnožina; tady jsou Claude-specific
+detaily a hluboký kontext k jednotlivým složkám.
 
-Content (uživatelův osobní web) žije v separátním repu — pro doménu `fakan.cz` je to [`junkycoder/fakan.cz`](https://github.com/junkycoder/fakan.cz). Při čerstvé návštěvě (bez state v IDB) si fakan default zdroj přečte z `<meta name="fakan-default-source">` v [index.html](index.html). Formát: `github:owner/repo[@branch]`. Per-doménu lze přepsat deploy-specific verzí indexu (nebo middlewarem).
+**Žádný uživatelský obsah v tomhle repu.** Obsah (texty, projekty,
+poznámky) žije v separátních content repech každé subdomény.
 
-Detailní vize, roadmapa a produktové tarify v [README.md](README.md). **Před prací si ji přečti** — jinak nepochopíš, kam to směřuje.
+### `mindmap/` — char-grid mindmapa player
+
+Frontendový „přehrávač" mindmapy + tenký Cloudflare Worker backend
+(statika, CI runner, tunel na vlastní stroj, anonymní stats, kontaktní D1
+userlist). Pro doménu `mindmap.fakan.cz` (a apex `fakan.cz`, pokud je
+to aktivní projekt).
+
+Content pro mindmap player se fetchuje za běhu z externího repa
+([`junkycoder/fakan.cz`](https://github.com/junkycoder/fakan.cz) jako
+default; user může v UI přepnout). Default zdroj se čte z
+`<meta name="fakan-default-source">` v `mindmap/index.html`. Formát:
+`github:owner/repo[@branch]`.
+
+Detail produktové vize, roadmapa a tarify v
+[`mindmap/README.md`](mindmap/README.md).
 
 ## FOK.md = komunikační log mezi sessionemi
 
