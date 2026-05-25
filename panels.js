@@ -670,6 +670,19 @@ const DOCK_STYLES = {
   bottom: { left: '8px',  top: 'auto',                       right: '8px',  bottom: 'calc(64px + var(--safe-b))', width: 'auto',                                         height: 'calc(50dvh - 40px - var(--safe-b))' },
 };
 
+// Na mobilu jdeme edge-to-edge — žádné 8px okraje, panel pohltí maximum obrazovky.
+// Border-radius / boční border se vypíná CSS přes panel--dock-* + media query.
+const MOBILE_DOCK_STYLES = {
+  full:   { left: '0', top: 'var(--safe-t)', right: '0', bottom: 'calc(64px + var(--safe-b))', width: 'auto', height: 'auto' },
+  top:    { left: '0', top: 'var(--safe-t)', right: '0', bottom: 'auto',                       width: 'auto', height: 'calc(50dvh - var(--safe-t))' },
+  bottom: { left: '0', top: 'auto',          right: '0', bottom: 'calc(64px + var(--safe-b))', width: 'auto', height: 'calc(50dvh - 64px - var(--safe-b))' },
+};
+
+function dockStylesFor(zone) {
+  if (isMobileViewport() && MOBILE_DOCK_STYLES[zone]) return MOBILE_DOCK_STYLES[zone];
+  return DOCK_STYLES[zone];
+}
+
 function updateDockButtons(panel) {
   const maxBtn = panel.element.querySelector('[data-panel-max]');
   if (!maxBtn) return;
@@ -693,7 +706,7 @@ export function dockPanel(panel, zone) {
       width: el.style.width, height: el.style.height,
     };
   }
-  const s = DOCK_STYLES[zone];
+  const s = dockStylesFor(zone);
   if (!s) return;
   el.style.left = s.left; el.style.top = s.top;
   el.style.right = s.right; el.style.bottom = s.bottom;
@@ -750,10 +763,11 @@ function ensureSnapPreview() {
 function showSnapPreview(zone) {
   const el = ensureSnapPreview();
   if (!zone) { el.classList.remove('is-visible'); return; }
-  const s = DOCK_STYLES[zone];
+  const s = dockStylesFor(zone);
   el.style.left = s.left; el.style.top = s.top;
   el.style.right = s.right; el.style.bottom = s.bottom;
   el.style.width = s.width; el.style.height = s.height;
+  el.classList.toggle('snap-preview--edge', isMobileViewport());
   el.classList.add('is-visible');
 }
 function hideSnapPreview() {
