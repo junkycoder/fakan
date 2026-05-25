@@ -1,0 +1,24 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "fakan-apex",
+	"main": "worker/index.js",
+	"compatibility_date": "2026-05-18",
+	"compatibility_flags": ["nodejs_compat"],
+
+	// Route na holé fakan.cz. Konfiguruje se v Cloudflare dashboardu
+	// (Workers Routes) nebo přes wrangler.jsonc routes pole — zatím
+	// nastavujeme ručně, ať se nepřebíjí stávající fakan-cz worker.
+	//
+	// "routes": [{ "pattern": "fakan.cz/*", "custom_domain": true }],
+
+	// Aktivní projekt — kam apex worker reverse-proxyje request.
+	// Změna: wrangler deploy --var ACTIVE_PROJECT=<jmeno>
+	// (přepíše hodnotu ve vars pro daný deploy).
+	"vars": {
+		"ACTIVE_PROJECT": "mindmap"
+	},
+
+	"observability": {
+		"enabled": true
+	}
+}

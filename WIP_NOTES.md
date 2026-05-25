@@ -27,66 +27,93 @@ Cloudflare Worker (raději Worker než Pages).
 
 ## Checklist migrace
 
-### Skeleton (hotovo)
+### Skeleton + docs (hotovo)
 - [x] `apex/README.md`, `www/README.md`, `new/README.md`
-- [ ] Root `README.md` — přepsat na mapu subdomén
-- [ ] Root `AGENTS.md` — vytvořit
-- [ ] `CLAUDE.md` — anotovat probíhající migraci
+- [x] Root `README.md` — přepsáno na mapu subdomén
+- [x] Root `AGENTS.md` — vytvořeno
+- [x] `CLAUDE.md` — anotováno warningem o probíhající migraci
 
-### Migrace mindmap (TODO — bude se dělat na Macku)
-- [ ] `git mv` všech `*.js`, `index.html`, `styles.css`, `vendor/` → `mindmap/`
-- [ ] `git mv worker/ mindmap/worker/`
-- [ ] `git mv agent/ mindmap/agent/` (per odpovědi user-a)
-- [ ] `git mv mobile/ mindmap/mobile/`
-- [ ] `git mv tests/ mindmap/tests/`
-- [ ] `git mv promo/ mindmap/promo/`
-- [ ] `git mv bin/ mindmap/bin/`
-- [ ] `git mv Makefile mindmap/Makefile`
-- [ ] `git mv wrangler.jsonc mindmap/wrangler.jsonc`
-- [ ] `git mv .fokrc mindmap/.fokrc` (volitelně)
+### Migrace mindmap (hotovo — všechen kód v mindmap/)
+- [x] `git mv` všech `*.js`, `index.html`, `styles.css`, `vendor/` → `mindmap/`
+- [x] `git mv worker/ mindmap/worker/`
+- [x] `git mv agent/ mindmap/agent/` (per odpovědi user-a)
+- [x] `git mv mobile/ mindmap/mobile/`
+- [x] `git mv tests/ mindmap/tests/`
+- [x] `git mv promo/ mindmap/promo/`
+- [x] `git mv bin/ mindmap/bin/`
+- [x] `git mv Makefile mindmap/Makefile`
+- [x] `git mv wrangler.jsonc mindmap/wrangler.jsonc`
+- [ ] `.fokrc` v rootu — zatím necháno, není používán z mindmap kódu;
+      user může smazat nebo přesunout dle uvážení
 
-### Po přesunu (cesty)
-- [ ] `mindmap/bin/build.sh` — `cd` ven o jeden level navíc už ne (přesun do mindmap/)
-- [ ] `mindmap/wrangler.jsonc` — `main`/`assets` cesty (zůstanou relativní k mindmap/)
-- [ ] `mindmap/mobile/capacitor.config.json` — `webDir: ../dist` (stejné, ../dist = mindmap/dist/)
-- [ ] `mindmap/tests/playwright.config.js` — `webServer.cwd: '..'` (= mindmap/)
-- [ ] `.claude/launch.json` — buď přesunout do `mindmap/.claude/launch.json`, nebo upravit cestu k `bin/serve.py`
-- [ ] `.github/workflows/test.yml` — `working-directory: mindmap` nebo cesty
-- [ ] `.gitignore` — `dist/` → `mindmap/dist/` (nebo nechat globálně)
+### Cesty po přesunu (hotovo)
+- [x] `.github/workflows/test.yml` — `working-directory: mindmap/tests`
+      + `cache-dependency-path: mindmap/tests/package-lock.json`
+      + `path: mindmap/tests/playwright-report`
+- [x] `.claude/launch.json` — `cd mindmap && python3 bin/serve.py $PORT`
+- [x] `.gitignore` — `tests/*` patterns → `mindmap/tests/*`
+- [x] `mindmap/bin/build.sh` — žádná úprava potřeba (relativní cesty fungují)
+- [x] `mindmap/wrangler.jsonc` — žádná úprava potřeba
+- [x] `mindmap/mobile/capacitor.config.json` — `../dist` stále sedí (mindmap/dist/)
+- [x] `mindmap/tests/playwright.config.js` — `cwd: '..'` stále sedí (= mindmap/)
 
-### Root úroveň po migraci
-- [ ] Nový `Makefile` v rootu — delegace `cd mindmap && $(MAKE) <target>`
-  + `make deploy DIR=…` / `make deploy-all`
-- [ ] `apex/wrangler.jsonc` + `apex/worker/index.js` — transparent proxy POC
+### Root úroveň (hotovo)
+- [x] Nový root `Makefile` — `make deploy DIR=mindmap`, `make deploy-all`, `make list`
+- [x] `apex/wrangler.jsonc` + `apex/worker/index.js` — transparent proxy POC
 
-### Apex worker
-- [ ] `apex/worker/index.js`:
-  ```js
-  export default {
-    async fetch(req, env) {
-      const url = new URL(req.url);
-      const target = `https://${env.ACTIVE_PROJECT}.fakan.cz${url.pathname}${url.search}`;
-      return fetch(new Request(target, req));
-    }
-  };
-  ```
-- [ ] `apex/wrangler.jsonc` — `routes: [{ pattern: "fakan.cz/*", custom_domain: true }]`
-- [ ] Otestovat: `wrangler deploy --var ACTIVE_PROJECT=mindmap` → `curl https://fakan.cz/` má vrátit obsah mindmap.fakan.cz
+## Co dodělat na Macku
+
+### 1. Lokální ověření po pull
+```bash
+git fetch origin claude/repo-structure-design-faZii
+git checkout -b base origin/claude/repo-structure-design-faZii
+cd mindmap
+make dev                  # python3 bin/serve.py 5173 → otevři http://localhost:5173
+make test                 # Playwright e2e
+make build                # ověř že dist/ se vytvoří správně
+```
+
+### 2. Worker rename / route plan (před deployem)
+Současný `mindmap/wrangler.jsonc` má `name: fakan-cz`. To je název existujícího
+Worker assetu v CF. Po `wrangler deploy` z `mindmap/` se _přepíše_ stejný
+worker (good — žádné výpadky). Ale jméno `fakan-cz` je matoucí pro mindmap-only:
+
+**Návrh přejmenování:**
+1. V `mindmap/wrangler.jsonc` změnit `name: fakan-cz` → `name: fakan-mindmap`
+2. V CF dashboardu přidat custom domain `mindmap.fakan.cz` na nový worker
+3. Deploy `mindmap/`: `cd mindmap && wrangler deploy`
+4. V CF: odstranit route `fakan.cz/*` ze starého `fakan-cz` workeru, smazat ho
+5. Deploy apexu: `cd apex && wrangler deploy`
+6. V CF: přidat route `fakan.cz/*` na nový `fakan-apex` worker
+
+Tím získáme: `mindmap.fakan.cz` (přímý), `fakan.cz/*` (proxy z apex → mindmap).
+Žádný downtime, dokud krok 4 a 6 nepřijdou na řadu.
+
+### 3. Otestovat apex proxy
+```bash
+cd apex
+wrangler dev        # lokálně na 8787
+curl -H 'Host: fakan.cz' http://localhost:8787/   # má vrátit mindmap.fakan.cz HTML
+```
+
+### 4. Smazat tento WIP_NOTES.md
+Po dokončení (a otestování že vše funguje) smaž `WIP_NOTES.md` a smaž warning
+v `CLAUDE.md`. Aktualizuj `CLAUDE.md` paths (`worker/index.js` → `mindmap/worker/index.js` atd.).
 
 ## Risky body / na co dát pozor
 
-- **DNS / Workers Routes**: nový worker na `fakan.cz/*` přebije současný `fakan-cz` worker.
-  Doporučení: před přepnutím apex workeru nejdřív deploynout `mindmap` worker pod
-  `mindmap.fakan.cz` (nový custom domain), ověřit že funguje, **až pak** přesunout
-  route na apex worker.
-- **Mindmap mobile/Capacitor**: `webDir` zůstává `../dist`, ale `dist/` se generuje
-  uvnitř `mindmap/` → `mindmap/mobile/` → `../dist` = `mindmap/dist/`. Sedí.
-- **Tests CI**: `.github/workflows/test.yml` startuje server z rootu repa → po migraci
-  buď upravit `working-directory: mindmap`, nebo `cd mindmap` v každém kroku.
-- **`fakan-cz` worker name** v `wrangler.jsonc` zůstane (existující CF asset),
-  jen se přejmenuje na `mindmap-fakan-cz` nebo `fakan-mindmap` (pozor, deploy si
-  vytvoří nový worker, starý je třeba ručně mazat).
+- **DNS / Workers Routes**: nový apex worker na `fakan.cz/*` přebije současný
+  `fakan-cz` worker. Postupuj přes mezikrok přes `mindmap.fakan.cz` (viz výše),
+  ať neztratíš provoz.
+- **Mindmap mobile/Capacitor**: ověř, že `dist/` se po `make build` opravdu
+  vytvoří v `mindmap/dist/` (ne v rootu). `bin/build.sh` má `cd "$(dirname "$0")/.."`
+  což z `mindmap/bin/` skočí do `mindmap/` — OK.
+- **Tests v CI**: po pushi na `main` (později) sleduj jestli workflow projde —
+  pokud ne, zkontroluj `mindmap/tests/playwright.config.js` `webServer.cwd: '..'`.
+  Z `mindmap/tests/` skočí do `mindmap/`, kde žije `index.html`. Sedí.
+- **FOK.md** v rootu — stále tam zůstává, je to per-repo log mezi sessionemi,
+  ne per-projekt.
 
-## Tested locally? Deployed?
+## Co je deployed?
 
-Zatím **nic**. Skeleton commit + push, ostatní se dodělá na Macku.
+Zatím **nic**. Vše čeká na ruční deploy z Macku po ověření.
