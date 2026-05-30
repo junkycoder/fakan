@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GitHub profil generátor — github.fakan.cz</title>
+  <meta name="description" content="Vygenerujte si pořádný GitHub profile README za pár kliků. Připojíme váš GitHub, postavíme prompt na míru, vy ho hodíte do své AI a stáhnete hotový README.">
+  <!-- Worker proxy + platební endpoint. Prázdné = běží přímo proti GitHub API (demo / dev). -->
+  <meta name="ghcv-api-base" content="">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">github<span>.fakan.cz</span></a>
+    <nav class="topnav">
+      <a href="#jak">Jak to funguje</a>
+      <a href="#nastroj">Nástroj</a>
+      <a href="#soukromi">Soukromí</a>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Hero + živé demo -->
+    <section class="hero" id="top">
+      <div class="hero-copy">
+        <h1>Pořádný GitHub profil za pár minut</h1>
+        <p class="lead">
+          Připojíme váš GitHub, posbíráme veřejná data a postavíme z nich
+          dokonalý prompt. Ten hodíte do své oblíbené AI, odpověď vlepíte
+          zpět &mdash; a stáhnete hotový <code>README.md</code>.
+        </p>
+        <p class="sub">
+          Žádné účty, žádné OAuth, žádné cookies. Jen vy, vaše AI a hotový profil.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#nastroj">Vyzkoušet na sobě</a>
+          <span class="price">1&nbsp;&euro; / 1&nbsp;$ / 25&nbsp;Kč &middot; jednorázově</span>
+        </div>
+      </div>
+      <div class="hero-demo">
+        <div class="demo-card" id="demo-card">
+          <div class="demo-head">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="demo-title">živé demo &mdash; GitHub Fakana</span>
+          </div>
+          <pre class="demo-body" id="demo-body">Načítám ukázku&hellip;</pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Jak to funguje -->
+    <section class="steps" id="jak">
+      <h2>Jak to funguje</h2>
+      <ol class="steps-list">
+        <li><b>Připojte GitHub</b> &mdash; stačí uživatelské jméno. Načteme veřejná repa a profil.</li>
+        <li><b>Doplňte pár věcí</b> &mdash; tagline, stack, web, tón, jazyk. Pole předvyplníme.</li>
+        <li><b>Zkopírujte prompt</b> &mdash; sestavíme ho na míru vašim datům.</li>
+        <li><b>Vlepte odpověď AI</b> &mdash; živý náhled markdownu a stažení <code>README.md</code>.</li>
+      </ol>
+    </section>
+
+    <!-- Nástroj -->
+    <section class="tool" id="nastroj">
+      <h2>Generátor</h2>
+
+      <!-- Krok 1: GitHub -->
+      <div class="panel" id="step-github">
+        <div class="panel-head"><span class="num">1</span> Připojte svůj GitHub</div>
+        <div class="panel-body">
+          <div class="row">
+            <label for="gh-user">GitHub username</label>
+            <div class="input-go">
+              <input id="gh-user" type="text" placeholder="napr. junkycoder" autocomplete="off" spellcheck="false">
+              <button class="btn" id="gh-load">Načíst</button>
+            </div>
+          </div>
+          <p class="hint" id="gh-status"></p>
+          <div class="profile-summary" id="profile-summary" hidden></div>
+        </div>
+      </div>
+
+      <!-- Krok 2: Nastavení -->
+      <div class="panel" id="step-settings" hidden>
+        <div class="panel-head"><span class="num">2</span> Vyladění</div>
+        <div class="panel-body grid2">
+          <div class="row">
+            <label for="f-tagline">Tagline</label>
+            <input id="f-tagline" type="text" placeholder="Jednou větou, kdo jste">
+          </div>
+          <div class="row">
+            <label for="f-website">Web / portfolio</label>
+            <input id="f-website" type="text" placeholder="https://&hellip;">
+          </div>
+          <div class="row span2">
+            <label for="f-stack">Stack &amp; zaměření</label>
+            <input id="f-stack" type="text" placeholder="napr. TypeScript, Go, Cloudflare, edge">
+          </div>
+          <div class="row">
+            <label for="f-tone">Tón</label>
+            <select id="f-tone">
+              <option value="profesionální, ale lidský">Profesionální, ale lidský</option>
+              <option value="věcný a minimalistický">Věcný a minimalistický</option>
+              <option value="hravý a sebevědomý">Hravý a sebevědomý</option>
+              <option value="formální a korporátní">Formální a korporátní</option>
+            </select>
+          </div>
+          <div class="row">
+            <label for="f-lang">Jazyk README</label>
+            <select id="f-lang">
+              <option value="čeština">Čeština</option>
+              <option value="angličtina">Angličtina</option>
+            </select>
+          </div>
+          <div class="row span2 check">
+            <label><input id="f-badges" type="checkbox" checked> Zahrnout odznaky (shields.io) a statistiky</label>
+            <label><input id="f-emoji" type="checkbox"> Povolit emoji ve výstupu</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Krok 3: Prompt -->
+      <div class="panel" id="step-prompt" hidden>
+        <div class="panel-head"><span class="num">3</span> Váš prompt
+          <button class="btn btn-small" id="prompt-copy">Zkopírovat</button>
+        </div>
+        <div class="panel-body">
+          <textarea id="prompt-out" rows="14" readonly spellcheck="false"></textarea>
+          <p class="hint">Vložte do ChatGPT, Claude, Gemini&hellip; a odpověď vlepte níže.</p>
+        </div>
+      </div>
+
+      <!-- Krok 4: Výsledek -->
+      <div class="panel" id="step-result" hidden>
+        <div class="panel-head"><span class="num">4</span> Výsledek
+          <button class="btn btn-small" id="md-download" disabled>Stáhnout README.md</button>
+        </div>
+        <div class="panel-body">
+          <div class="result-grid">
+            <div class="row">
+              <label for="md-in">Odpověď z AI (Markdown)</label>
+              <textarea id="md-in" rows="18" placeholder="Sem vlepte markdown z AI&hellip;" spellcheck="false"></textarea>
+            </div>
+            <div class="row">
+              <label>Náhled</label>
+              <div class="md-preview" id="md-preview"><p class="muted">Náhled se zobrazí, jakmile vlepíte markdown.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Návod na závěr -->
+    <section class="howto" id="howto" hidden>
+      <h2>Poslední krok: nahrát na GitHub</h2>
+      <ol>
+        <li>Založte si repo se <b>stejným názvem jako váš username</b> (např. <code id="howto-repo">username/username</code>) a zaškrtněte „Add a README&rdquo;.</li>
+        <li>Nahraďte obsah <code>README.md</code> staženým souborem.</li>
+        <li>Commit &mdash; profilové README se objeví nahoře na vašem GitHub profilu.</li>
+      </ol>
+    </section>
+
+    <!-- Soukromí -->
+    <section class="privacy" id="soukromi">
+      <h2>Data &amp; soukromí</h2>
+      <ul>
+        <li>Bereme <b>jen e-mail</b> &mdash; kvůli účtence a faktuře.</li>
+        <li><b>Žádné cookies.</b> Stav nástroje žije jen v paměti stránky.</li>
+        <li>GitHub data se nikam neukládají &mdash; zpracují se a zahodí.</li>
+        <li>Platbu zpracovává Stripe; my si k ní nedržíme kartu ani jiné údaje.</li>
+      </ul>
+    </section>
+  </main>
+
+  <!-- Paywall overlay -->
+  <div class="paywall" id="paywall" hidden>
+    <div class="paywall-box">
+      <h3>Odemkněte generátor</h3>
+      <p>Demo nahoře je živá ukázka. Pro použití na sebe (a stažení README) odemkněte nástroj jednorázovou platbou.</p>
+      <div class="paywall-price">1&nbsp;&euro; / 1&nbsp;$ / 25&nbsp;Kč</div>
+      <button class="btn btn-primary" id="pay-btn">Odemknout přes Stripe</button>
+      <p class="hint">Apple Pay / Google Pay na jeden klik, karta jako fallback. E-mail zadáte v Checkoutu.</p>
+      <button class="btn-link" id="paywall-close">Zatím jen prohlížím demo</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <span>github.fakan.cz</span>
+    <span>cookie-free &middot; EAA-přístupné &middot; postaveno AI agenty</span>
+  </footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

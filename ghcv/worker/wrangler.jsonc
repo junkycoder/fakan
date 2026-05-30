@@ -1,0 +1,24 @@
+{
+  // Cloudflare Worker pro github.fakan.cz — GitHub proxy + Stripe + Resend.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ghcv-fakan",
+  "main": "index.js",
+  "compatibility_date": "2025-01-01",
+
+  "vars": {
+    "SITE_URL": "https://github.fakan.cz"
+  },
+
+  // KV cache GitHub odpovědí (vytvoř: wrangler kv namespace create GH_CACHE)
+  "kv_namespaces": [
+    { "binding": "GH_CACHE", "id": "REPLACE_WITH_KV_ID" }
+  ],
+
+  // Volitelný účetní záznam plateb (wrangler d1 create ghcv-payments)
+  "d1_databases": [
+    { "binding": "PAYMENTS", "database_name": "ghcv-payments", "database_id": "REPLACE_WITH_D1_ID" }
+  ]
+
+  // Secrets se nastavují přes `wrangler secret put`:
+  //   GITHUB_TOKEN, STRIPE_SECRET, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ID, RESEND_KEY
+}
